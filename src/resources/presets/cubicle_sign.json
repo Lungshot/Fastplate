@@ -1,0 +1,19 @@
+{
+  "name": "Cubicle Sign",
+  "plate": {
+    "shape": "rounded_rectangle",
+    "width": 100,
+    "height": 30,
+    "thickness": 4,
+    "corner_radius": 5
+  },
+  "text": {
+    "lines": [{"content": "Name", "font_size": 12}],
+    "style": "raised",
+    "depth": 1.5
+  },
+  "mount": {
+    "type": "magnet_pockets",
+    "magnet_count": 2
+  }
+}

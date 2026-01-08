@@ -1,0 +1,16 @@
+{
+  "name": "Standalone Text",
+  "plate": {
+    "shape": "none",
+    "width": 120,
+    "height": 35,
+    "thickness": 4
+  },
+  "text": {
+    "lines": [{"content": "Your Name", "font_size": 18}],
+    "style": "raised",
+    "depth": 4,
+    "orientation": "horizontal"
+  },
+  "mount": {"type": "none"}
+}

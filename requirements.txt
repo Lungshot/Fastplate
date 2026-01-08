@@ -1,0 +1,33 @@
+# 3D Nameplate Generator - Dependencies
+# ======================================
+#
+# IMPORTANT: CadQuery is best installed via Conda:
+#   conda install -c cadquery -c conda-forge cadquery
+#
+# Then install the rest with pip:
+#   pip install -r requirements.txt
+#
+# For a full conda environment:
+#   conda create -n nameplate python=3.10
+#   conda activate nameplate
+#   conda install -c cadquery -c conda-forge cadquery
+#   pip install -r requirements.txt
+
+# Core 3D modeling (install via conda recommended)
+# cadquery>=2.4.0  # Uncomment if installing via pip
+
+# GUI framework
+PyQt5>=5.15.0
+
+# 3D visualization
+pyqtgraph>=0.13.0
+PyOpenGL>=3.1.0
+
+# Font handling
+fonttools>=4.0.0
+
+# Numerical operations
+numpy>=1.20.0
+
+# For packaging standalone executable
+pyinstaller>=6.0.0

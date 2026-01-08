@@ -1,0 +1,20 @@
+{
+  "name": "Desk Nameplate",
+  "plate": {
+    "shape": "sweeping",
+    "width": 120,
+    "height": 35,
+    "thickness": 4
+  },
+  "sweeping": {
+    "curve_angle": 35,
+    "curve_radius": 90,
+    "base_type": "pedestal"
+  },
+  "text": {
+    "lines": [{"content": "Your Name", "font_size": 14}],
+    "style": "raised",
+    "depth": 2
+  },
+  "mount": {"type": "none"}
+}

@@ -1,0 +1,22 @@
+{
+  "name": "Door Sign",
+  "plate": {
+    "shape": "rounded_rectangle",
+    "width": 150,
+    "height": 50,
+    "thickness": 5,
+    "corner_radius": 8
+  },
+  "text": {
+    "lines": [
+      {"content": "Room Name", "font_size": 16},
+      {"content": "Room Number", "font_size": 10}
+    ],
+    "style": "raised",
+    "depth": 2
+  },
+  "mount": {
+    "type": "screw_holes",
+    "hole_pattern": "two_top"
+  }
+}

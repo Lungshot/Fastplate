@@ -1,0 +1,1 @@
+"""Core nameplate generation module."""
