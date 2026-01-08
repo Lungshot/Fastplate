@@ -11,7 +11,7 @@ on:
       max_iterations:
         description: 'Maximum development iterations'
         required: false
-        default: '5'
+        default: '60'
 
   # Can also trigger on schedule (commented out - enable if desired)
   # schedule:
@@ -54,6 +54,7 @@ jobs:
             4. **Default view options** - Should be: light grey color, Edge Highlight lighting, Grid on, Edges off, Wireframe off
             5. **Preset save/load** - Mixing up text lines and adding duplicates
             6. **Reset buttons** - Each setting needs a reset-to-default button
+            7. **import SVG** - Add the ability to import SVG / vector path images and add them to the nameplate. After they are imported, the user should be able to position them in the viewport with the mouse and change rotation, axis, scaling etc.
 
             ## Step 3: Development Guidelines
             - Focus area (if specified): ${{ github.event.inputs.focus_area || 'auto-detect from issues' }}
@@ -69,7 +70,7 @@ jobs:
             - Recommended next steps
 
             ## Constraints
-            - Maximum iterations: ${{ github.event.inputs.max_iterations || '5' }}
+            - Maximum iterations: ${{ github.event.inputs.max_iterations || '60' }}
             - Don't break existing functionality
             - Commit working code only
             - If stuck on an issue, document it and move to the next
