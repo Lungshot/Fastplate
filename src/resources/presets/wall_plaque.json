@@ -1,0 +1,23 @@
+{
+  "name": "Wall Plaque",
+  "plate": {
+    "shape": "rectangle",
+    "width": 180,
+    "height": 60,
+    "thickness": 6
+  },
+  "text": {
+    "lines": [{"content": "Your Text", "font_size": 18}],
+    "style": "raised",
+    "depth": 3
+  },
+  "border": {
+    "enabled": true,
+    "style": "raised",
+    "width": 5,
+    "height": 2
+  },
+  "mount": {
+    "type": "keyhole"
+  }
+}

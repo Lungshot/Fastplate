@@ -1,0 +1,19 @@
+{
+  "name": "Keychain Tag",
+  "plate": {
+    "shape": "rounded_rectangle",
+    "width": 50,
+    "height": 20,
+    "thickness": 3,
+    "corner_radius": 3
+  },
+  "text": {
+    "lines": [{"content": "Tag", "font_size": 8}],
+    "style": "raised",
+    "depth": 1
+  },
+  "mount": {
+    "type": "hanging_hole",
+    "hanging_diameter": 4
+  }
+}
