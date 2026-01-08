@@ -1,0 +1,80 @@
+name: Claude Autonomous Development
+
+on:
+  # Manual trigger with options
+  workflow_dispatch:
+    inputs:
+      focus_area:
+        description: 'Area to focus on (leave empty for auto-detect)'
+        required: false
+        default: ''
+      max_iterations:
+        description: 'Maximum development iterations'
+        required: false
+        default: '5'
+
+  # Can also trigger on schedule (commented out - enable if desired)
+  # schedule:
+  #   - cron: '0 */6 * * *'  # Every 6 hours
+
+jobs:
+  autonomous-development:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50  # Get recent history for context
+
+      - name: Run Claude Development Session
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are an autonomous development agent for the Fastplate project (a 3D nameplate generator using CadQuery, PyQt5, and PyQtGraph).
+
+            ## Your Mission
+            Review the current development status and continue making progress on the project.
+
+            ## Step 1: Assess Current State
+            1. Read the recent git commits: `git log --oneline -20`
+            2. Check for any open issues or TODOs in the code
+            3. Review the README.md and any documentation
+            4. Identify what features are complete vs incomplete
+
+            ## Step 2: Known Issues to Address (Priority Order)
+            1. **Engraved/cutout text styles** - Preview still shows raised text above when engraved or cutout is selected
+            2. **Built-in presets not loading** - Presets should appear in the presets panel
+            3. **Mounting options error** - "Cannot find a solid on the stack" error
+            4. **Default view options** - Should be: light grey color, Edge Highlight lighting, Grid on, Edges off, Wireframe off
+            5. **Preset save/load** - Mixing up text lines and adding duplicates
+            6. **Reset buttons** - Each setting needs a reset-to-default button
+
+            ## Step 3: Development Guidelines
+            - Focus area (if specified): ${{ github.event.inputs.focus_area || 'auto-detect from issues' }}
+            - Make small, focused commits
+            - Test changes where possible
+            - Update documentation if needed
+            - Create issues for bugs you discover but can't immediately fix
+
+            ## Step 4: Create a Summary
+            After making changes, create or update an issue summarizing:
+            - What you accomplished
+            - What issues remain
+            - Recommended next steps
+
+            ## Constraints
+            - Maximum iterations: ${{ github.event.inputs.max_iterations || '5' }}
+            - Don't break existing functionality
+            - Commit working code only
+            - If stuck on an issue, document it and move to the next
+
+            Begin your development session now.
+
+          claude_args: |
+            --max-turns 50
