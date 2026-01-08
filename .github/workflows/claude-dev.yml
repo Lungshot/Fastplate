@@ -41,13 +41,33 @@ jobs:
             ## Your Mission
             Review the current development status and continue making progress on the project.
 
-            ## Step 1: Assess Current State
-            1. Read the recent git commits: `git log --oneline -20`
-            2. Check for any open issues or TODOs in the code
-            3. Review the README.md and any documentation
-            4. Identify what features are complete vs incomplete
+            ## CRITICAL PRIORITY: Windows 11 Standalone EXE
 
-            ## Step 2: Known Issues to Address (Priority Order)
+            **THIS IS THE HIGHEST PRIORITY REQUIREMENT**
+
+            The application MUST run on Windows 11 directly from the EXE with ZERO external dependencies.
+            Users should NOT need to install Python, DLLs, Visual C++ Redistributables, or anything else.
+
+            ### Verification Required:
+            1. Review PyInstaller spec file and build process
+            2. Ensure ALL dependencies are bundled:
+               - CadQuery/OpenCASCADE libraries
+               - casadi DLLs (must be in _internal/ root, not subfolder)
+               - PyQt5 plugins and DLLs
+               - PyQtGraph/OpenGL dependencies
+               - Font files and preset JSON files
+            3. Verify resource paths use sys._MEIPASS detection for frozen app
+            4. Test that --onedir build includes everything needed
+
+            Read TODO.md for the full requirements checklist.
+
+            ## Step 1: Assess Current State
+            1. Read TODO.md for full requirements and known issues
+            2. Read the recent git commits: `git log --oneline -20`
+            3. Review the PyInstaller spec file and build.bat
+            4. Check src/utils/resources.py for frozen app path handling
+
+            ## Step 2: Known Issues to Address (After Windows EXE verification)
             1. **Engraved/cutout text styles** - Preview still shows raised text above when engraved or cutout is selected
             2. **Built-in presets not loading** - Presets should appear in the presets panel
             3. **Mounting options error** - "Cannot find a solid on the stack" error
@@ -57,7 +77,7 @@ jobs:
             7. **import SVG** - Add the ability to import SVG / vector path images and add them to the nameplate. After they are imported, the user should be able to position them in the viewport with the mouse and change rotation, axis, scaling etc.
 
             ## Step 3: Development Guidelines
-            - Focus area (if specified): ${{ github.event.inputs.focus_area || 'auto-detect from issues' }}
+            - Focus area (if specified): ${{ github.event.inputs.focus_area || 'auto-detect from TODO.md' }}
             - Make small, focused commits
             - Test changes where possible
             - Update documentation if needed
@@ -68,6 +88,7 @@ jobs:
             - What you accomplished
             - What issues remain
             - Recommended next steps
+            - Status of Windows 11 standalone EXE readiness
 
             ## Constraints
             - Maximum iterations: ${{ github.event.inputs.max_iterations || '60' }}

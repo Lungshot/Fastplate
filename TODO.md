@@ -1,5 +1,42 @@
 # Fastplate Development TODO
 
+## CRITICAL REQUIREMENT: Windows 11 Standalone EXE
+
+**THIS IS THE HIGHEST PRIORITY REQUIREMENT**
+
+The application MUST be installable on Windows 11 directly from the EXE with **ZERO external dependencies**. Users should NOT need to:
+- Install Python
+- Install any DLLs manually
+- Install Visual C++ Redistributables
+- Install any other software
+
+### Verification Checklist
+- [ ] EXE runs on fresh Windows 11 install
+- [ ] All CadQuery/OCC libraries bundled correctly
+- [ ] All casadi DLLs included in `_internal/` root
+- [ ] All PyQt5 plugins and DLLs included
+- [ ] All OpenGL dependencies for PyQtGraph included
+- [ ] Font files accessible from bundled app
+- [ ] Preset JSON files load from bundled resources
+- [ ] Export (STL/STEP/3MF) works in bundled app
+
+### Known Distribution Issues
+- casadi requires DLLs copied to `_internal/` root (not in casadi subfolder)
+- PyInstaller needs `--collect-all casadi --collect-all PyQt5`
+- Resource paths must use `sys._MEIPASS` detection for frozen app
+- Use `--onedir` not `--onefile` for native library compatibility
+
+### Build Command
+```bash
+pyinstaller --name NameplateGenerator --onedir --windowed --paths src ^
+  --collect-all casadi --collect-all PyQt5 ^
+  --add-data "src/resources;resources" ^
+  src/main.py
+# THEN: Copy all DLLs from casadi folder to _internal/ root
+```
+
+---
+
 ## Known Bugs (Priority Order)
 
 ### 1. Engraved/Cutout Text Preview
