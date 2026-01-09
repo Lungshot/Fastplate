@@ -13,6 +13,7 @@ from .geometry.text_builder import TextBuilder, TextConfig, TextStyle, TextLineC
 from .geometry.borders import BorderGenerator, BorderConfig, BorderStyle
 from .geometry.mounts import MountGenerator, MountConfig, MountType
 from .geometry.sweeping import SweepingPlateGenerator, SweepingConfig
+from .geometry.svg_importer import SVGImporter, SVGElement
 from .export.exporter import Exporter, ExportOptions, ExportFormat
 
 
@@ -36,7 +37,10 @@ class NameplateConfig:
     
     # Icons (Nerd Fonts)
     icons: List[dict] = field(default_factory=list)  # List of icon configs
-    
+
+    # SVG elements
+    svg_elements: List[SVGElement] = field(default_factory=list)
+
     # Metadata
     name: str = "Untitled"
     
@@ -92,6 +96,24 @@ class NameplateConfig:
                 'stand_angle': self.mount.stand_angle,
             },
             'icons': self.icons,
+            'svg_elements': [
+                {
+                    'name': elem.name,
+                    'paths': elem.paths,
+                    'viewbox': elem.viewbox,
+                    'width': elem.width,
+                    'height': elem.height,
+                    'position_x': elem.position_x,
+                    'position_y': elem.position_y,
+                    'rotation': elem.rotation,
+                    'scale_x': elem.scale_x,
+                    'scale_y': elem.scale_y,
+                    'depth': elem.depth,
+                    'style': elem.style,
+                    'target_size': getattr(elem, 'target_size', 20.0),
+                }
+                for elem in self.svg_elements
+            ],
         }
     
     @classmethod
@@ -154,7 +176,27 @@ class NameplateConfig:
         
         if 'icons' in data:
             config.icons = data['icons']
-        
+
+        if 'svg_elements' in data:
+            config.svg_elements = []
+            for elem_data in data['svg_elements']:
+                elem = SVGElement(
+                    name=elem_data.get('name', 'SVG Element'),
+                    paths=elem_data.get('paths', []),
+                    viewbox=tuple(elem_data.get('viewbox', (0, 0, 100, 100))),
+                    width=elem_data.get('width', 0),
+                    height=elem_data.get('height', 0),
+                    position_x=elem_data.get('position_x', 0),
+                    position_y=elem_data.get('position_y', 0),
+                    rotation=elem_data.get('rotation', 0),
+                    scale_x=elem_data.get('scale_x', 1.0),
+                    scale_y=elem_data.get('scale_y', 1.0),
+                    depth=elem_data.get('depth', 2.0),
+                    style=elem_data.get('style', 'raised'),
+                )
+                elem.target_size = elem_data.get('target_size', 20.0)
+                config.svg_elements.append(elem)
+
         return config
 
 
@@ -172,6 +214,7 @@ class NameplateBuilder:
         self._text_gen = TextBuilder()
         self._border_gen = BorderGenerator()
         self._mount_gen = MountGenerator()
+        self._svg_importer = SVGImporter()
         self._exporter = Exporter()
         
         # Generated geometry cache
@@ -312,10 +355,56 @@ class NameplateBuilder:
             result = result.union(mount_add)
         if mount_subtract is not None:
             result = result.cut(mount_subtract)
-        
+
+        # Add SVG elements
+        for svg_elem in cfg.svg_elements:
+            svg_geometry = self._svg_importer.create_geometry(
+                svg_elem,
+                target_size=getattr(svg_elem, 'target_size', 20.0)
+            )
+            if svg_geometry is not None:
+                # Apply position
+                svg_positioned = svg_geometry.translate((
+                    svg_elem.position_x,
+                    svg_elem.position_y,
+                    0
+                ))
+
+                # Apply rotation
+                if svg_elem.rotation != 0:
+                    svg_positioned = svg_positioned.rotate(
+                        (0, 0, 0), (0, 0, 1), svg_elem.rotation
+                    )
+
+                # Handle style (raised/engraved/cutout)
+                if svg_elem.style == "raised":
+                    svg_final = svg_positioned.translate((0, 0, plate_thickness))
+                    result = result.union(svg_final)
+                elif svg_elem.style == "engraved":
+                    svg_final = svg_positioned.translate((0, 0, plate_thickness - svg_elem.depth))
+                    result = result.cut(svg_final)
+                elif svg_elem.style == "cutout":
+                    # Extend through the plate
+                    svg_cutout = self._svg_importer.create_geometry(
+                        svg_elem,
+                        target_size=getattr(svg_elem, 'target_size', 20.0),
+                        depth=plate_thickness + 1
+                    )
+                    if svg_cutout is not None:
+                        svg_cutout = svg_cutout.translate((
+                            svg_elem.position_x,
+                            svg_elem.position_y,
+                            -0.5
+                        ))
+                        if svg_elem.rotation != 0:
+                            svg_cutout = svg_cutout.rotate(
+                                (0, 0, 0), (0, 0, 1), svg_elem.rotation
+                            )
+                        result = result.cut(svg_cutout)
+
         self._combined_geometry = result
         self._needs_rebuild = False
-        
+
         return result
     
     def get_geometry(self) -> Optional[cq.Workplane]:

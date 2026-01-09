@@ -16,6 +16,7 @@ from ui.panels.text_panel import TextPanel
 from ui.panels.base_panel import BasePlatePanel
 from ui.panels.mount_panel import MountPanel
 from ui.panels.preset_panel import PresetPanel
+from ui.panels.svg_panel import SVGPanel
 
 from fonts.font_manager import get_font_manager
 from core.nameplate import NameplateBuilder, NameplateConfig
@@ -97,7 +98,11 @@ class MainWindow(QMainWindow):
         # Mount panel
         self._mount_panel = MountPanel()
         self._tabs.addTab(self._mount_panel, "Mounting")
-        
+
+        # SVG panel
+        self._svg_panel = SVGPanel()
+        self._tabs.addTab(self._svg_panel, "SVG/Graphics")
+
         right_layout.addWidget(self._tabs)
         
         splitter.addWidget(right_widget)
@@ -188,7 +193,8 @@ class MainWindow(QMainWindow):
         self._text_panel.settings_changed.connect(self._schedule_update)
         self._base_panel.settings_changed.connect(self._schedule_update)
         self._mount_panel.settings_changed.connect(self._schedule_update)
-        
+        self._svg_panel.settings_changed.connect(self._schedule_update)
+
         # Preset selection
         self._preset_panel.preset_selected.connect(self._on_preset_selected)
         self._preset_panel.save_requested.connect(self._on_save_preset)
@@ -365,18 +371,24 @@ class MainWindow(QMainWindow):
         config.mount.hanging_hole_diameter = mount_cfg.get('hanging_diameter', 5.0)
         config.mount.hanging_hole_position = mount_cfg.get('hanging_position', 'top_center')
 
+        # Get SVG elements
+        config.svg_elements = self._svg_panel.get_elements()
+
         return config
     
     def _apply_config(self, data: dict):
         """Apply configuration data to UI panels."""
         if 'text' in data:
             self._text_panel.set_config(data['text'])
-        
+
         if 'plate' in data or 'sweeping' in data:
             self._base_panel.set_config(data)
-        
+
         if 'mount' in data:
             self._mount_panel.set_config(data['mount'])
+
+        if 'svg_elements' in data:
+            self._svg_panel.set_config({'elements': data['svg_elements']})
     
     def _on_new(self):
         """Handle File > New."""
@@ -401,6 +413,7 @@ class MainWindow(QMainWindow):
                     'thickness': 4,
                 },
                 'mount': {'type': 'none'},
+                'svg_elements': [],
             })
             self._update_preview()
     
