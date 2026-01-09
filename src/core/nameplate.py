@@ -287,6 +287,8 @@ class NameplateBuilder:
                     # Position so text cuts down from top surface
                     text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth))
                     result = result.cut(text_engraved)
+                # Clear text geometry - it's now part of the combined geometry (cut into plate)
+                self._text_geometry = None
             elif cfg.text.style == TextStyle.CUTOUT:
                 # Cut completely through plate - need text as tall as plate thickness
                 from .geometry.text_builder import TextBuilder, TextConfig
@@ -302,6 +304,8 @@ class NameplateBuilder:
                     # Position to cut through entire plate
                     text_cutout = cutout_text.translate((0, 0, -0.5))
                     result = result.cut(text_cutout)
+                # Clear text geometry - it's now part of the combined geometry (cut through plate)
+                self._text_geometry = None
         
         # Add mount features
         if mount_add is not None:
