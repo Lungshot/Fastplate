@@ -100,4 +100,4 @@ jobs:
             Begin your development session now.
 
           claude_args: |
-            --max-turns 50
+            --max-turns 200
