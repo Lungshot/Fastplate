@@ -197,16 +197,19 @@ class TextPanel(QWidget):
     
     def _add_line(self):
         """Add a new text line widget."""
+        self._add_line_silent()
+        self._on_changed()
+
+    def _add_line_silent(self):
+        """Add a new text line widget without emitting signals."""
         line_num = len(self._line_widgets) + 1
         line_widget = TextLineWidget(line_num)
         line_widget.set_fonts(self._font_names)
         line_widget.changed.connect(self._on_changed)
         line_widget.remove_requested.connect(self._remove_line)
-        
+
         self._line_widgets.append(line_widget)
         self._lines_layout.addWidget(line_widget)
-        
-        self._on_changed()
     
     def _remove_line(self, widget):
         """Remove a text line widget."""
@@ -265,34 +268,44 @@ class TextPanel(QWidget):
 
     def set_config(self, config: dict):
         """Set the text configuration."""
-        # Clear ALL existing lines (bypass the "keep one" check)
-        while self._line_widgets:
-            widget = self._line_widgets.pop()
-            self._lines_layout.removeWidget(widget)
-            widget.deleteLater()
+        # Block signals during bulk configuration to prevent cascade updates
+        self.blockSignals(True)
 
-        # Add lines from config
-        lines = config.get('lines', [])
-        if not lines:
-            # Ensure at least one empty line
-            self._add_line()
-        else:
-            for line_config in lines:
-                self._add_line()
-                self._line_widgets[-1].set_config(line_config)
+        try:
+            # Clear ALL existing lines (bypass the "keep one" check)
+            while self._line_widgets:
+                widget = self._line_widgets.pop()
+                widget.blockSignals(True)  # Block individual widget signals too
+                self._lines_layout.removeWidget(widget)
+                widget.deleteLater()
 
-        # Set style options
-        style_map = {"raised": "Raised", "engraved": "Engraved", "cutout": "Cutout"}
-        self._text_style_combo.setCurrentText(style_map.get(config.get('style'), 'Raised'))
+            # Add lines from config
+            lines = config.get('lines', [])
+            if not lines:
+                # Ensure at least one empty line
+                self._add_line_silent()
+            else:
+                for line_config in lines:
+                    self._add_line_silent()
+                    self._line_widgets[-1].set_config(line_config)
 
-        if 'depth' in config:
-            self._depth_slider.setValue(config['depth'])
+            # Set style options
+            style_map = {"raised": "Raised", "engraved": "Engraved", "cutout": "Cutout"}
+            self._text_style_combo.setCurrentText(style_map.get(config.get('style'), 'Raised'))
 
-        if 'line_spacing' in config:
-            self._spacing_slider.setValue(config['line_spacing'])
+            if 'depth' in config:
+                self._depth_slider.setValue(config['depth'])
 
-        align_map = {"left": "Left", "center": "Center", "right": "Right"}
-        self._align_combo.setCurrentText(align_map.get(config.get('halign'), 'Center'))
+            if 'line_spacing' in config:
+                self._spacing_slider.setValue(config['line_spacing'])
 
-        orient_map = {"horizontal": "Horizontal", "vertical": "Vertical"}
-        self._orient_combo.setCurrentText(orient_map.get(config.get('orientation'), 'Horizontal'))
+            align_map = {"left": "Left", "center": "Center", "right": "Right"}
+            self._align_combo.setCurrentText(align_map.get(config.get('halign'), 'Center'))
+
+            orient_map = {"horizontal": "Horizontal", "vertical": "Vertical"}
+            self._orient_combo.setCurrentText(orient_map.get(config.get('orientation'), 'Horizontal'))
+        finally:
+            self.blockSignals(False)
+
+        # Emit a single signal after all configuration is complete
+        self.settings_changed.emit()

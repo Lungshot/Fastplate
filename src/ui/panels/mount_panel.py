@@ -296,35 +296,72 @@ class MountPanel(QWidget):
     
     def set_config(self, config: dict):
         """Set the mount configuration."""
-        type_map = {
-            "none": 0,
-            "desk_stand": 1,
-            "screw_holes": 2,
-            "keyhole": 3,
-            "magnet_pockets": 4,
-            "hanging_hole": 5,
-            "adhesive_recess": 6
-        }
-        self._type_combo.setCurrentIndex(type_map.get(config.get('type'), 0))
-        
-        if 'stand_angle' in config:
-            self._stand_angle.setValue(config['stand_angle'])
-        if 'stand_depth' in config:
-            self._stand_depth.setValue(config['stand_depth'])
-        if 'stand_integrated' in config:
-            self._stand_integrated.setChecked(config['stand_integrated'])
-        
-        pattern_map = {
-            "two_top": "Two Top",
-            "two_sides": "Two Sides",
-            "four_corners": "Four Corners",
-            "center_top": "Center Top"
-        }
-        self._hole_pattern.setCurrentText(pattern_map.get(config.get('hole_pattern'), 'Two Top'))
-        
-        if 'hole_diameter' in config:
-            self._hole_diameter.setValue(config['hole_diameter'])
-        if 'countersink' in config:
-            self._countersink.setChecked(config['countersink'])
-        if 'hole_edge_distance' in config:
-            self._hole_edge.setValue(config['hole_edge_distance'])
+        # Block signals during bulk configuration to prevent cascade updates
+        self.blockSignals(True)
+
+        try:
+            type_map = {
+                "none": 0,
+                "desk_stand": 1,
+                "screw_holes": 2,
+                "keyhole": 3,
+                "magnet_pockets": 4,
+                "hanging_hole": 5,
+                "adhesive_recess": 6
+            }
+            self._type_combo.setCurrentIndex(type_map.get(config.get('type'), 0))
+            self._options_stack.setCurrentIndex(type_map.get(config.get('type'), 0))
+
+            if 'stand_angle' in config:
+                self._stand_angle.setValue(config['stand_angle'])
+            if 'stand_depth' in config:
+                self._stand_depth.setValue(config['stand_depth'])
+            if 'stand_integrated' in config:
+                self._stand_integrated.setChecked(config['stand_integrated'])
+
+            pattern_map = {
+                "two_top": "Two Top",
+                "two_sides": "Two Sides",
+                "four_corners": "Four Corners",
+                "center_top": "Center Top"
+            }
+            self._hole_pattern.setCurrentText(pattern_map.get(config.get('hole_pattern'), 'Two Top'))
+
+            if 'hole_diameter' in config:
+                self._hole_diameter.setValue(config['hole_diameter'])
+            if 'countersink' in config:
+                self._countersink.setChecked(config['countersink'])
+            if 'hole_edge_distance' in config:
+                self._hole_edge.setValue(config['hole_edge_distance'])
+
+            # Keyhole settings
+            if 'keyhole_large' in config:
+                self._keyhole_large.setValue(config['keyhole_large'])
+            if 'keyhole_small' in config:
+                self._keyhole_small.setValue(config['keyhole_small'])
+            if 'keyhole_length' in config:
+                self._keyhole_length.setValue(config['keyhole_length'])
+
+            # Magnet settings
+            if 'magnet_size' in config:
+                self._magnet_size.setCurrentText(config['magnet_size'])
+            if 'magnet_count' in config:
+                self._magnet_count.setCurrentText(str(config['magnet_count']))
+            if 'magnet_edge' in config:
+                self._magnet_edge.setValue(config['magnet_edge'])
+
+            # Hanging hole settings
+            pos_map = {
+                "top_center": "Top Center",
+                "top_corners": "Top Corners",
+                "corners": "Top Corners"
+            }
+            if 'hanging_position' in config:
+                self._hanging_pos.setCurrentText(pos_map.get(config['hanging_position'], 'Top Center'))
+            if 'hanging_diameter' in config:
+                self._hanging_diameter.setValue(config['hanging_diameter'])
+        finally:
+            self.blockSignals(False)
+
+        # Emit a single signal after all configuration is complete
+        self.settings_changed.emit()
