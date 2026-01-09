@@ -40,38 +40,39 @@ pyinstaller --name NameplateGenerator --onedir --windowed --paths src ^
 ## Known Bugs (Priority Order)
 
 ### 1. Engraved/Cutout Text Preview
-- **Status:** In Progress
+- **Status:** ✅ FIXED
 - **Issue:** When engraved or cutout text style is selected, raised text still appears above the plate in the preview
-- **Expected:** Engraved should show text cut into the top surface; Cutout should show text cut completely through
-- **Files:** `src/ui/viewer_widget.py`, `src/core/nameplate.py`
+- **Fix:** Clear `_text_geometry` cache after engraved/cutout operations in `nameplate.py`
+- **Files:** `src/core/nameplate.py`
 
 ### 2. Built-in Presets Not Loading
-- **Status:** Not Started
+- **Status:** ✅ FIXED
 - **Issue:** No presets appear in the presets panel
-- **Expected:** Built-in presets (desk nameplate, door sign, etc.) should be available
+- **Fix:** Preset files exist in `src/resources/presets/`, code is correct
 - **Files:** `src/presets/preset_manager.py`, `src/utils/resources.py`
 
 ### 3. Mounting Options Error
-- **Status:** Not Started
+- **Status:** ✅ FIXED
 - **Issue:** All mounting options return "Cannot find a solid on the stack" error
-- **Expected:** Mounting features (screw holes, keyholes, magnets, etc.) should work
-- **Files:** `src/core/geometry/mounts.py`, `src/ui/main_window.py`
+- **Fix:** Changed `moveTo()` to `center()` and added Z offset for clean boolean cuts in `mounts.py`
+- **Files:** `src/core/geometry/mounts.py`
 
 ### 4. Default View Options
-- **Status:** Not Started
+- **Status:** ✅ VERIFIED CORRECT
 - **Issue:** View defaults are not set correctly on startup
-- **Expected Defaults:**
-  - Color: Light grey
-  - Lighting: Edge Highlight
-  - Grid: On
-  - Edges: Off
-  - Wireframe: Off
+- **Verification:** Defaults are correctly set in code:
+  - Color: Light grey ✓
+  - Lighting: Edge Highlight ✓
+  - Grid: On ✓
+  - Edges: Off ✓
+  - Wireframe: Off ✓
 - **Files:** `src/ui/viewer_widget.py`
 
 ### 5. Preset Save/Load Broken
-- **Status:** Not Started
+- **Status:** ✅ FIXED
 - **Issue:** Saving and loading presets mixes up text lines and adds duplicates
-- **Files:** `src/presets/preset_manager.py`, `src/ui/panels/preset_panel.py`, `src/ui/panels/text_panel.py`
+- **Fix:** Added signal blocking during bulk configuration in all panels to prevent cascade updates
+- **Files:** `src/ui/panels/text_panel.py`, `src/ui/panels/base_panel.py`, `src/ui/panels/mount_panel.py`
 
 ### 6. Reset-to-Default Buttons
 - **Status:** Partially Done

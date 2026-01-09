@@ -204,36 +204,55 @@ class BasePlatePanel(QWidget):
     
     def set_config(self, config: dict):
         """Set the base plate configuration."""
-        plate = config.get('plate', {})
-        sweeping = config.get('sweeping', {})
-        
-        shape_map = {
-            "none": "None (Text Only)",
-            "rectangle": "Rectangle",
-            "rounded_rectangle": "Rounded Rectangle",
-            "oval": "Oval",
-            "chamfered": "Chamfered",
-            "hexagon": "Hexagon",
-            "octagon": "Octagon",
-            "sweeping": "Sweeping (Curved)",
-        }
-        self._shape_combo.setCurrentText(shape_map.get(plate.get('shape'), 'Rounded Rectangle'))
-        
-        self._width_slider.setValue(plate.get('width', 120))
-        self._height_slider.setValue(plate.get('height', 35))
-        self._thickness_slider.setValue(plate.get('thickness', 4))
-        self._corner_slider.setValue(plate.get('corner_radius', 5))
-        
-        self._auto_width_cb.setChecked(plate.get('auto_width', False))
-        self._auto_height_cb.setChecked(plate.get('auto_height', False))
-        
-        self._padding_top.setValue(plate.get('padding_top', 5))
-        self._padding_bottom.setValue(plate.get('padding_bottom', 5))
-        self._padding_left.setValue(plate.get('padding_left', 10))
-        self._padding_right.setValue(plate.get('padding_right', 10))
-        
-        self._curve_angle_slider.setValue(sweeping.get('curve_angle', 45))
-        self._curve_radius_slider.setValue(sweeping.get('curve_radius', 80))
-        
-        base_type_map = {"pedestal": "Pedestal", "minimal": "Minimal", "flat": "Flat"}
-        self._base_type_combo.setCurrentText(base_type_map.get(sweeping.get('base_type'), 'Pedestal'))
+        # Block signals during bulk configuration to prevent cascade updates
+        self.blockSignals(True)
+
+        try:
+            plate = config.get('plate', {})
+            sweeping = config.get('sweeping', {})
+
+            shape_map = {
+                "none": "None (Text Only)",
+                "rectangle": "Rectangle",
+                "rounded_rectangle": "Rounded Rectangle",
+                "oval": "Oval",
+                "chamfered": "Chamfered",
+                "hexagon": "Hexagon",
+                "octagon": "Octagon",
+                "sweeping": "Sweeping (Curved)",
+            }
+            self._shape_combo.setCurrentText(shape_map.get(plate.get('shape'), 'Rounded Rectangle'))
+
+            self._width_slider.setValue(plate.get('width', 120))
+            self._height_slider.setValue(plate.get('height', 35))
+            self._thickness_slider.setValue(plate.get('thickness', 4))
+            self._corner_slider.setValue(plate.get('corner_radius', 5))
+
+            self._auto_width_cb.setChecked(plate.get('auto_width', False))
+            self._auto_height_cb.setChecked(plate.get('auto_height', False))
+
+            self._padding_top.setValue(plate.get('padding_top', 5))
+            self._padding_bottom.setValue(plate.get('padding_bottom', 5))
+            self._padding_left.setValue(plate.get('padding_left', 10))
+            self._padding_right.setValue(plate.get('padding_right', 10))
+
+            self._curve_angle_slider.setValue(sweeping.get('curve_angle', 45))
+            self._curve_radius_slider.setValue(sweeping.get('curve_radius', 80))
+
+            base_type_map = {"pedestal": "Pedestal", "minimal": "Minimal", "flat": "Flat"}
+            self._base_type_combo.setCurrentText(base_type_map.get(sweeping.get('base_type'), 'Pedestal'))
+
+            # Update UI visibility for shape type
+            shape_text = self._shape_combo.currentText()
+            is_none = "None" in shape_text
+            is_sweeping = "Sweeping" in shape_text
+            self._sweep_group.setVisible(is_sweeping)
+            self._options_group.setVisible(not is_sweeping and not is_none)
+            for widget in [self._width_slider, self._height_slider, self._thickness_slider,
+                           self._auto_width_cb, self._auto_height_cb]:
+                widget.setEnabled(not is_none)
+        finally:
+            self.blockSignals(False)
+
+        # Emit a single signal after all configuration is complete
+        self.settings_changed.emit()
