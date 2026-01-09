@@ -203,35 +203,35 @@ class MountGenerator:
         # Create holes - first hole becomes base, others union to it
         holes = None
         for x, y in positions:
-            if cfg.hole_countersink:
-                # Countersunk hole - create cylinder with counterbore shape
-                hole = (
+            try:
+                # Create main hole cylinder - starts slightly below Z=0 to ensure clean cut
+                main_hole = (
                     cq.Workplane("XY")
-                    .moveTo(x, y)
+                    .center(x, y)
                     .circle(cfg.hole_diameter / 2)
-                    .extrude(plate_thickness)
-                    .faces(">Z")
-                    .workplane()
-                    .moveTo(x, y)
-                    .circle(cfg.countersink_diameter / 2)
-                    .extrude(-cfg.countersink_depth)
-                )
-            else:
-                # Simple through hole
-                hole = (
-                    cq.Workplane("XY")
-                    .moveTo(x, y)
-                    .circle(cfg.hole_diameter / 2)
-                    .extrude(plate_thickness)
+                    .extrude(plate_thickness + 0.2)
+                    .translate((0, 0, -0.1))
                 )
 
-            if holes is None:
-                holes = hole
-            else:
-                try:
+                if cfg.hole_countersink:
+                    # Create countersink at top of plate
+                    countersink = (
+                        cq.Workplane("XY")
+                        .center(x, y)
+                        .circle(cfg.countersink_diameter / 2)
+                        .extrude(cfg.countersink_depth + 0.1)
+                        .translate((0, 0, plate_thickness - cfg.countersink_depth))
+                    )
+                    hole = main_hole.union(countersink)
+                else:
+                    hole = main_hole
+
+                if holes is None:
+                    holes = hole
+                else:
                     holes = holes.union(hole)
-                except:
-                    pass
+            except Exception as e:
+                print(f"Error creating screw hole at ({x}, {y}): {e}")
 
         return holes
     
@@ -250,25 +250,27 @@ class MountGenerator:
         holes = None
         for x, y in positions:
             try:
-                # Keyhole: large entry hole on top, slot extending down on back
-                # Create the large hole (goes partway through)
-                large_hole = (
-                    cq.Workplane("XY")
-                    .workplane(offset=plate_thickness / 2)
-                    .moveTo(x, y)
-                    .circle(cfg.keyhole_large_diameter / 2)
-                    .extrude(plate_thickness / 2 + 0.1)
-                )
-
-                # Create the slot (goes through remaining thickness)
+                # Keyhole: large entry hole on top/back, narrow slot goes through
+                # Create the narrow slot that goes all the way through
                 slot = (
                     cq.Workplane("XY")
-                    .moveTo(x, y - cfg.keyhole_length / 2)
+                    .center(x, y - cfg.keyhole_length / 2)
                     .slot2D(cfg.keyhole_length, cfg.keyhole_small_diameter)
-                    .extrude(plate_thickness + 0.1)
+                    .extrude(plate_thickness + 0.2)
+                    .translate((0, 0, -0.1))
                 )
 
-                keyhole = large_hole.union(slot)
+                # Create the large entry hole on the back (Z=0 side)
+                # Goes partway through the plate
+                large_hole = (
+                    cq.Workplane("XY")
+                    .center(x, y)
+                    .circle(cfg.keyhole_large_diameter / 2)
+                    .extrude(plate_thickness / 2 + 0.1)
+                    .translate((0, 0, -0.1))
+                )
+
+                keyhole = slot.union(large_hole)
 
                 if holes is None:
                     holes = keyhole
@@ -304,22 +306,23 @@ class MountGenerator:
         if not positions:
             return None
 
-        # Create cylindrical pockets - first becomes base, others union to it
+        # Create cylindrical pockets on the back (Z=0 side)
         pockets = None
         for x, y in positions:
-            pocket = (
-                cq.Workplane("XY")
-                .moveTo(x, y)
-                .circle(magnet_d / 2)
-                .extrude(magnet_h)
-            )
-            if pockets is None:
-                pockets = pocket
-            else:
-                try:
+            try:
+                pocket = (
+                    cq.Workplane("XY")
+                    .center(x, y)
+                    .circle(magnet_d / 2)
+                    .extrude(magnet_h + 0.1)
+                    .translate((0, 0, -0.1))
+                )
+                if pockets is None:
+                    pockets = pocket
+                else:
                     pockets = pockets.union(pocket)
-                except:
-                    pass
+            except Exception as e:
+                print(f"Error creating magnet pocket at ({x}, {y}): {e}")
 
         return pockets
     
@@ -342,19 +345,20 @@ class MountGenerator:
         # Create holes - first becomes base, others union to it
         holes = None
         for x, y in positions:
-            hole = (
-                cq.Workplane("XY")
-                .moveTo(x, y)
-                .circle(cfg.hanging_hole_diameter / 2)
-                .extrude(plate_thickness + 0.1)
-            )
-            if holes is None:
-                holes = hole
-            else:
-                try:
+            try:
+                hole = (
+                    cq.Workplane("XY")
+                    .center(x, y)
+                    .circle(cfg.hanging_hole_diameter / 2)
+                    .extrude(plate_thickness + 0.2)
+                    .translate((0, 0, -0.1))
+                )
+                if holes is None:
+                    holes = hole
+                else:
                     holes = holes.union(hole)
-                except:
-                    pass
+            except Exception as e:
+                print(f"Error creating hanging hole at ({x}, {y}): {e}")
 
         return holes
     
@@ -365,14 +369,18 @@ class MountGenerator:
         recess_width = plate_width * 0.7
         recess_height = 15.0  # Standard adhesive strip width
         recess_depth = 1.0    # Shallow recess
-        
-        recess = (
-            cq.Workplane("XY")
-            .rect(recess_width, recess_height)
-            .extrude(recess_depth)
-        )
-        
-        return recess
+
+        try:
+            recess = (
+                cq.Workplane("XY")
+                .rect(recess_width, recess_height)
+                .extrude(recess_depth + 0.1)
+                .translate((0, 0, -0.1))
+            )
+            return recess
+        except Exception as e:
+            print(f"Error creating adhesive recess: {e}")
+            return None
 
 
 def get_common_magnet_sizes() -> List[MagnetSize]:
