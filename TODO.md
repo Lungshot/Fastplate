@@ -11,14 +11,14 @@ The application MUST be installable on Windows 11 directly from the EXE with **Z
 - Install any other software
 
 ### Verification Checklist
-- [ ] EXE runs on fresh Windows 11 install
-- [ ] All CadQuery/OCC libraries bundled correctly
-- [ ] All casadi DLLs included in `_internal/` root
-- [ ] All PyQt5 plugins and DLLs included
-- [ ] All OpenGL dependencies for PyQtGraph included
-- [ ] Font files accessible from bundled app
-- [ ] Preset JSON files load from bundled resources
-- [ ] Export (STL/STEP/3MF) works in bundled app
+- [x] EXE runs on Windows 11 (tested 2026-01-09)
+- [x] All CadQuery/OCC libraries bundled correctly
+- [x] All casadi DLLs included in `_internal/` root (137 DLLs)
+- [x] All PyQt5 plugins and DLLs included
+- [x] All OpenGL dependencies for PyQtGraph included
+- [x] Preset JSON files load from bundled resources (7 presets)
+- [ ] Font files accessible from bundled app (uses system fonts)
+- [ ] Export (STL/STEP/3MF) works in bundled app (needs manual test)
 
 ### Known Distribution Issues
 - casadi requires DLLs copied to `_internal/` root (not in casadi subfolder)
@@ -75,16 +75,34 @@ pyinstaller --name NameplateGenerator --onedir --windowed --paths src ^
 - **Files:** `src/ui/panels/text_panel.py`, `src/ui/panels/base_panel.py`, `src/ui/panels/mount_panel.py`
 
 ### 6. Reset-to-Default Buttons
-- **Status:** Partially Done
+- **Status:** ✅ FIXED
 - **Issue:** Settings need individual reset buttons to restore default values
-- **Progress:** `FocusComboBox` and `ResetableComboBox` widgets created
+- **Fix:** `FocusComboBox` and `ResetableComboBox` widgets created with reset buttons
 - **Files:** `src/ui/widgets/slider_spin.py`, all panel files
+
+## Recently Implemented Features
+
+### SVG/Vector Graphics Import
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Import SVG files and add vector graphics to nameplates
+- **Capabilities:**
+  - Supports SVG paths (M, L, H, V, C, S, Q, Z commands)
+  - Supports basic shapes (rect, circle, ellipse, polygon, polyline)
+  - Bezier curve approximation for smooth paths
+  - Position, rotation, and scale controls
+  - Raised, engraved, or cutout styles
+  - Size control (target dimension in mm)
+- **Files:**
+  - `src/core/geometry/svg_importer.py` - SVG parsing and CadQuery geometry
+  - `src/ui/panels/svg_panel.py` - UI panel for SVG import/configuration
+  - `src/core/nameplate.py` - SVG integration in build process
+  - `src/ui/main_window.py` - SVG panel integration
 
 ## Feature Wishlist
 
 - [ ] Multi-color STL export (for multi-material printing)
 - [ ] QR code support
-- [ ] Logo/image import
+- [x] Logo/image import (SVG support implemented)
 - [ ] Undo/redo system
 - [ ] Dark mode UI theme
 
