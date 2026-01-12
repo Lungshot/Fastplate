@@ -198,6 +198,57 @@ class SVGPathParser:
                     self._current_x, self._current_y = x, y
                     self._last_control = (x1, y1)
 
+            elif cmd in 'Tt':
+                # Smooth Quadratic Bezier
+                while i < len(tokens) and self._is_number(tokens[i]):
+                    # Control point is reflection of last control
+                    if self._last_control:
+                        x1 = 2 * self._current_x - self._last_control[0]
+                        y1 = 2 * self._current_y - self._last_control[1]
+                    else:
+                        x1, y1 = self._current_x, self._current_y
+
+                    x, y = float(tokens[i]), float(tokens[i+1])
+                    i += 2
+
+                    if cmd == 't':
+                        x += self._current_x
+                        y += self._current_y
+
+                    points = self._quadratic_bezier(
+                        self._current_x, self._current_y,
+                        x1, y1, x, y
+                    )
+                    current_path.extend(points[1:])
+
+                    self._current_x, self._current_y = x, y
+                    self._last_control = (x1, y1)
+
+            elif cmd in 'Aa':
+                # Arc - approximate with line segments
+                while i < len(tokens) and self._is_number(tokens[i]):
+                    rx = float(tokens[i])
+                    ry = float(tokens[i+1])
+                    x_rot = float(tokens[i+2])
+                    large_arc = int(float(tokens[i+3]))
+                    sweep = int(float(tokens[i+4]))
+                    x, y = float(tokens[i+5]), float(tokens[i+6])
+                    i += 7
+
+                    if cmd == 'a':
+                        x += self._current_x
+                        y += self._current_y
+
+                    # Approximate arc with line segments
+                    points = self._arc_to_points(
+                        self._current_x, self._current_y,
+                        rx, ry, x_rot, large_arc, sweep, x, y
+                    )
+                    current_path.extend(points[1:])
+
+                    self._current_x, self._current_y = x, y
+                    self._last_control = None
+
             elif cmd in 'Zz':
                 # ClosePath
                 if current_path:
@@ -211,13 +262,24 @@ class SVGPathParser:
 
     def _tokenize(self, d: str) -> List[str]:
         """Tokenize SVG path data into commands and numbers."""
-        # Add spaces around commands
-        d = re.sub(r'([MmZzLlHhVvCcSsQqTtAa])', r' \1 ', d)
-        # Handle negative numbers and commas
-        d = re.sub(r',', ' ', d)
-        d = re.sub(r'-', ' -', d)
-        # Split and filter empty
-        return [t for t in d.split() if t]
+        # Use regex to properly extract all tokens (commands and numbers)
+        # SVG numbers can be: -1.5, .5, 1., 1e-5, etc.
+        # Numbers can be separated by: whitespace, comma, or sign change, or implicit decimal
+
+        tokens = []
+        # Pattern matches: commands OR numbers (with optional exponent)
+        # Numbers: optional sign, then either (digits with optional decimal) or (decimal with digits)
+        pattern = r'([MmZzLlHhVvCcSsQqTtAa])|([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)'
+
+        for match in re.finditer(pattern, d):
+            cmd = match.group(1)
+            num = match.group(2)
+            if cmd:
+                tokens.append(cmd)
+            elif num:
+                tokens.append(num)
+
+        return tokens
 
     def _is_number(self, s: str) -> bool:
         """Check if string is a number."""
@@ -249,6 +311,79 @@ class SVGPathParser:
             points.append((x, y))
         return points
 
+    def _arc_to_points(self, x0, y0, rx, ry, x_rot, large_arc, sweep, x, y, segments=20):
+        """Approximate elliptical arc with line segments."""
+        # Handle edge cases
+        if rx == 0 or ry == 0:
+            return [(x0, y0), (x, y)]
+
+        # Convert rotation to radians
+        phi = math.radians(x_rot)
+        cos_phi = math.cos(phi)
+        sin_phi = math.sin(phi)
+
+        # Compute center point (simplified endpoint parameterization)
+        dx = (x0 - x) / 2
+        dy = (y0 - y) / 2
+
+        # Transform to unit circle space
+        x1p = cos_phi * dx + sin_phi * dy
+        y1p = -sin_phi * dx + cos_phi * dy
+
+        # Correct radii if needed
+        rx = abs(rx)
+        ry = abs(ry)
+        lambda_sq = (x1p**2 / rx**2) + (y1p**2 / ry**2)
+        if lambda_sq > 1:
+            rx *= math.sqrt(lambda_sq)
+            ry *= math.sqrt(lambda_sq)
+
+        # Compute center point
+        sq = max(0, (rx**2 * ry**2 - rx**2 * y1p**2 - ry**2 * x1p**2) /
+                    (rx**2 * y1p**2 + ry**2 * x1p**2))
+        sq = math.sqrt(sq)
+        if large_arc == sweep:
+            sq = -sq
+
+        cxp = sq * rx * y1p / ry
+        cyp = -sq * ry * x1p / rx
+
+        cx = cos_phi * cxp - sin_phi * cyp + (x0 + x) / 2
+        cy = sin_phi * cxp + cos_phi * cyp + (y0 + y) / 2
+
+        # Compute start and end angles
+        def angle(ux, uy, vx, vy):
+            n = math.sqrt(ux**2 + uy**2) * math.sqrt(vx**2 + vy**2)
+            if n == 0:
+                return 0
+            c = (ux * vx + uy * vy) / n
+            c = max(-1, min(1, c))
+            a = math.acos(c)
+            if ux * vy - uy * vx < 0:
+                a = -a
+            return a
+
+        theta1 = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
+        dtheta = angle((x1p - cxp) / rx, (y1p - cyp) / ry,
+                       (-x1p - cxp) / rx, (-y1p - cyp) / ry)
+
+        if sweep == 0 and dtheta > 0:
+            dtheta -= 2 * math.pi
+        elif sweep == 1 and dtheta < 0:
+            dtheta += 2 * math.pi
+
+        # Generate points along the arc
+        points = []
+        for i in range(segments + 1):
+            t = theta1 + (i / segments) * dtheta
+            xp = rx * math.cos(t)
+            yp = ry * math.sin(t)
+            px = cos_phi * xp - sin_phi * yp + cx
+            py = sin_phi * xp + cos_phi * yp + cy
+            points.append((px, py))
+
+        return points
+
 
 class SVGImporter:
     """
@@ -271,7 +406,42 @@ class SVGImporter:
         try:
             tree = ET.parse(filepath)
             root = tree.getroot()
+            name = Path(filepath).stem
+            return self._parse_svg_root(root, name)
+        except Exception as e:
+            print(f"Error loading SVG file: {e}")
+            return None
 
+    def load_svg_from_content(self, content: str, name: str = "SVG Element") -> Optional[SVGElement]:
+        """
+        Load SVG from a string content.
+
+        Args:
+            content: SVG content as a string
+            name: Name for the element
+
+        Returns:
+            SVGElement with parsed paths, or None if parsing failed.
+        """
+        try:
+            root = ET.fromstring(content)
+            return self._parse_svg_root(root, name)
+        except Exception as e:
+            print(f"Error parsing SVG content: {e}")
+            return None
+
+    def _parse_svg_root(self, root: ET.Element, name: str) -> Optional[SVGElement]:
+        """
+        Parse SVG from an ElementTree root element.
+
+        Args:
+            root: The root SVG element
+            name: Name for the element
+
+        Returns:
+            SVGElement with parsed paths, or None if parsing failed.
+        """
+        try:
             # Handle namespace
             ns = {'svg': 'http://www.w3.org/2000/svg'}
 
@@ -306,12 +476,12 @@ class SVGImporter:
             all_paths.extend(self._parse_basic_shapes(root, ns))
 
             if not all_paths:
-                print(f"No paths found in SVG: {filepath}")
+                print(f"No paths found in SVG: {name}")
                 return None
 
             # Create SVG element
             element = SVGElement(
-                name=Path(filepath).stem,
+                name=name,
                 paths=all_paths,
                 width=width,
                 height=height,
@@ -321,7 +491,7 @@ class SVGImporter:
             return element
 
         except Exception as e:
-            print(f"Error loading SVG: {e}")
+            print(f"Error parsing SVG: {e}")
             return None
 
     def _parse_dimension(self, value: str) -> float:

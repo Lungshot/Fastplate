@@ -212,11 +212,34 @@ class SVGPanel(QWidget):
                     "Could not import the SVG file. Make sure it contains valid path data."
                 )
 
-    def _add_element_widget(self, element: SVGElement):
+    def add_svg_from_content(self, svg_content: str, name: str, target_size: float = None) -> bool:
+        """
+        Add an SVG element from SVG content string.
+
+        Args:
+            svg_content: The SVG XML content as a string
+            name: Display name for the element
+            target_size: Optional initial target size in mm
+
+        Returns:
+            True if successful, False otherwise
+        """
+        element = self._importer.load_svg_from_content(svg_content, name)
+        if element:
+            self._add_element_widget(element, target_size=target_size)
+            self._on_changed()
+            return True
+        return False
+
+    def _add_element_widget(self, element: SVGElement, target_size: float = None):
         """Add a widget for an SVG element."""
         widget = SVGElementWidget(element)
         widget.changed.connect(self._on_changed)
         widget.remove_requested.connect(self._remove_element)
+
+        # Set target size if provided
+        if target_size is not None:
+            widget._size_slider.setValue(target_size)
 
         self._svg_widgets.append(widget)
         self._elements_layout.addWidget(widget)

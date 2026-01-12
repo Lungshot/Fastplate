@@ -55,7 +55,7 @@ def get_user_data_dir() -> Path:
     else:
         base = Path.home() / '.config'
 
-    user_dir = base / 'NameplateGenerator'
+    user_dir = base / 'Fastplate'
     user_dir.mkdir(parents=True, exist_ok=True)
     return user_dir
 

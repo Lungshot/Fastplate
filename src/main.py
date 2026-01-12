@@ -1,5 +1,5 @@
 """
-3D Nameplate Generator - Main Entry Point
+Fastplate - Main Entry Point
 """
 
 import sys
@@ -24,9 +24,9 @@ def main():
     app = QApplication(sys.argv)
     
     # Set application info
-    app.setApplicationName("Nameplate Generator")
+    app.setApplicationName("Fastplate")
     app.setApplicationVersion("0.1.0")
-    app.setOrganizationName("NameplateGen")
+    app.setOrganizationName("Fastplate")
     
     # Set dark theme
     app.setStyle("Fusion")

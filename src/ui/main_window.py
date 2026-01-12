@@ -1,6 +1,6 @@
 """
 Main Window
-The main application window for the Nameplate Generator.
+The main application window for Fastplate.
 """
 
 from PyQt5.QtWidgets import (
@@ -49,7 +49,7 @@ class MainWindow(QMainWindow):
     
     def _setup_ui(self):
         """Set up the main UI layout."""
-        self.setWindowTitle("3D Nameplate Generator")
+        self.setWindowTitle("Fastplate")
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
         
@@ -195,6 +195,9 @@ class MainWindow(QMainWindow):
         self._mount_panel.settings_changed.connect(self._schedule_update)
         self._svg_panel.settings_changed.connect(self._schedule_update)
 
+        # Google icon selection from text panel
+        self._text_panel.google_icon_selected.connect(self._on_google_icon_selected)
+
         # Preset selection
         self._preset_panel.preset_selected.connect(self._on_preset_selected)
         self._preset_panel.save_requested.connect(self._on_save_preset)
@@ -273,22 +276,47 @@ class MainWindow(QMainWindow):
         
         # Get text config
         text_cfg = self._text_panel.get_config()
-        from core.geometry.text_builder import TextLineConfig, TextStyle, TextAlign, TextOrientation
+        from core.geometry.text_builder import TextLineConfig, TextSegment, TextStyle, TextAlign, TextOrientation
 
         config.text.lines = []
         for line_data in text_cfg.get('lines', []):
+            # Build segments if present
+            segments = []
+            segments_data = line_data.get('segments', [])
+            if segments_data:
+                for seg_data in segments_data:
+                    seg = TextSegment(
+                        content=seg_data.get('content', ''),
+                        font_family=seg_data.get('font_family', 'Arial'),
+                        font_style=seg_data.get('font_style', 'Regular'),
+                        font_size=seg_data.get('font_size', 12.0),
+                        letter_spacing=seg_data.get('letter_spacing', 0.0),
+                        is_icon=seg_data.get('is_icon', False),
+                    )
+                    # Get font path for this segment
+                    font_path = self._font_manager.get_font_path(
+                        seg.font_family, seg.font_style
+                    )
+                    if font_path:
+                        seg.font_path = font_path
+                    segments.append(seg)
+
             line = TextLineConfig(
                 content=line_data.get('content', ''),
                 font_family=line_data.get('font_family', 'Arial'),
                 font_style=line_data.get('font_style', 'Regular'),
                 font_size=line_data.get('font_size', 12.0),
+                letter_spacing=line_data.get('letter_spacing', 0.0),
+                segments=segments,
+                segment_gap=line_data.get('segment_gap', 2.0),
             )
-            # Get font path
-            font_path = self._font_manager.get_font_path(
-                line.font_family, line.font_style
-            )
-            if font_path:
-                line.font_path = font_path
+            # Get font path for legacy content (if no segments)
+            if not segments:
+                font_path = self._font_manager.get_font_path(
+                    line.font_family, line.font_style
+                )
+                if font_path:
+                    line.font_path = font_path
             config.text.lines.append(line)
 
         config.text.style = TextStyle(text_cfg.get('style', 'raised'))
@@ -393,7 +421,7 @@ class MainWindow(QMainWindow):
     def _on_new(self):
         """Handle File > New."""
         reply = QMessageBox.question(
-            self, "New Nameplate",
+            self, "New Design",
             "Clear current design and start fresh?",
             QMessageBox.Yes | QMessageBox.No
         )
@@ -426,10 +454,10 @@ class MainWindow(QMainWindow):
         }
         
         filter_str = f"{ext_map[format][0]} ({ext_map[format][1]})"
-        default_ext = ext_map[format][1].replace("*", "nameplate")
+        default_ext = ext_map[format][1].replace("*", "fastplate")
         
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Nameplate", default_ext, filter_str
+            self, "Export", default_ext, filter_str
         )
         
         if filepath:
@@ -448,7 +476,7 @@ class MainWindow(QMainWindow):
     def _on_export_separate(self):
         """Export base and text as separate files."""
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Separate Parts", "nameplate.stl", "STL Files (*.stl)"
+            self, "Export Separate Parts", "fastplate.stl", "STL Files (*.stl)"
         )
         
         if filepath:
@@ -482,9 +510,34 @@ class MainWindow(QMainWindow):
     def _on_about(self):
         """Show about dialog."""
         QMessageBox.about(
-            self, "About Nameplate Generator",
-            "3D Nameplate Generator\n\n"
+            self, "About Fastplate",
+            "Fastplate\n\n"
             "Create customizable 3D-printable nameplates\n"
-            "with any Windows font and Nerd Font icons.\n\n"
-            "Version 0.1.0"
+            "with any Windows font, Nerd Font icons,\n"
+            "Google Material icons, and SVG graphics.\n\n"
+            "Version 0.2.0"
         )
+
+    def _on_google_icon_selected(self, icon_data: dict):
+        """Handle Google Material icon selection from text panel."""
+        svg_content = icon_data.get('svg_content')
+        name = icon_data.get('name', 'Material Icon')
+        size = icon_data.get('size', 12)
+        style = icon_data.get('style', 'baseline')
+
+        if svg_content:
+            # Add the icon to the SVG panel
+            display_name = f"{name} ({style})"
+            success = self._svg_panel.add_svg_from_content(svg_content, display_name, target_size=size)
+
+            if success:
+                # Switch to SVG tab to show the added icon
+                self._tabs.setCurrentWidget(self._svg_panel)
+                self._status_label.setText(f"Added Google icon: {name}")
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Icon Import Failed",
+                    f"Could not import the Google icon '{name}'.\n"
+                    "The icon may not contain valid path data."
+                )

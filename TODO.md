@@ -28,7 +28,7 @@ The application MUST be installable on Windows 11 directly from the EXE with **Z
 
 ### Build Command
 ```bash
-pyinstaller --name NameplateGenerator --onedir --windowed --paths src ^
+pyinstaller --name Fastplate --onedir --windowed --paths src ^
   --collect-all casadi --collect-all PyQt5 ^
   --add-data "src/resources;resources" ^
   src/main.py
@@ -80,7 +80,55 @@ pyinstaller --name NameplateGenerator --onedir --windowed --paths src ^
 - **Fix:** `FocusComboBox` and `ResetableComboBox` widgets created with reset buttons
 - **Files:** `src/ui/widgets/slider_spin.py`, all panel files
 
+### 7. Engraved Text Boolean Inversion
+- **Status:** ✅ FIXED
+- **Issue:** Engraved text style cuts surrounding plate instead of cutting into plate
+- **Fix:** Create fresh TextConfig with proper depth/positioning for boolean cuts
+- **Files:** `src/core/nameplate.py`
+
+### 8. Cutout Text Incomplete with Script Fonts
+- **Status:** ✅ FIXED
+- **Issue:** Complex script fonts only show partial character cutouts (union failures)
+- **Fix:** Use TopoDS_Compound instead of union() to collect all character solids
+- **Files:** `src/core/geometry/text_builder.py`
+
+### 9. Google Material Icons Import Failing
+- **Status:** ✅ FIXED
+- **Issue:** Icon import fails with "may not contain valid path data" error
+- **Fix:** Fixed SVG path tokenizer to handle compact number formats (e.g., `-3.41.81`)
+- **Files:** `src/core/geometry/svg_importer.py`
+
 ## Recently Implemented Features
+
+### Character/Letter Spacing Control
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Adjust spacing between individual characters in text lines
+- **Capabilities:**
+  - Per-line letter spacing slider (-50% to +100%)
+  - Percentage of font size for consistent scaling
+  - Works with all fonts
+  - Persists in presets
+- **Files:**
+  - `src/ui/panels/text_panel.py` - Added "Letter Spacing" slider to TextLineWidget
+  - `src/core/geometry/text_builder.py` - Per-character rendering when spacing != 0
+
+### Google Material Icons Integration
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Browse and import Google Material Design icons directly into nameplates
+- **Capabilities:**
+  - Browse ~250 curated Material Design icons
+  - Search by icon name or keywords
+  - Filter by category (Action, Communication, Navigation, etc.)
+  - Multiple icon styles: Baseline, Outline, Round, Sharp, Two-tone
+  - Icons downloaded from CDN and converted to SVG geometry
+  - Position, rotation, size, and depth controls
+  - Raised, engraved, or cutout styles
+- **Files:**
+  - `src/fonts/material_icons.py` - Icon data manager with search/download
+  - `src/resources/data/material_icons.json` - Curated icon database
+  - `src/ui/dialogs/material_icons_dialog.py` - Icon browser dialog
+  - `src/ui/panels/text_panel.py` - "Add Icon (Google)" button
+  - `src/core/geometry/svg_importer.py` - Added `load_svg_from_content()` method
 
 ### SVG/Vector Graphics Import
 - **Status:** ✅ IMPLEMENTED
@@ -117,8 +165,8 @@ python main.py
 ### Building Distribution
 ```bash
 # Run build.bat or:
-pyinstaller NameplateGenerator.spec
-# Then copy casadi DLLs to dist/NameplateGenerator/_internal/
+pyinstaller nameplate_generator.spec
+# Then copy casadi DLLs to dist/Fastplate/_internal/
 ```
 
 ### Key Architecture

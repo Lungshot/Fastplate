@@ -9,7 +9,7 @@ from typing import Optional, Tuple, List
 from pathlib import Path
 
 from .geometry.base_plates import BasePlateGenerator, PlateConfig, PlateShape
-from .geometry.text_builder import TextBuilder, TextConfig, TextStyle, TextLineConfig
+from .geometry.text_builder import TextBuilder, TextConfig, TextStyle, TextLineConfig, TextSegment
 from .geometry.borders import BorderGenerator, BorderConfig, BorderStyle
 from .geometry.mounts import MountGenerator, MountConfig, MountType
 from .geometry.sweeping import SweepingPlateGenerator, SweepingConfig
@@ -72,10 +72,25 @@ class NameplateConfig:
             'text': {
                 'lines': [
                     {
+                        # Legacy properties for backward compatibility
                         'content': line.content,
                         'font_family': line.font_family,
                         'font_style': line.font_style,
                         'font_size': line.font_size,
+                        'letter_spacing': line.letter_spacing,
+                        # New segment-based format
+                        'segments': [
+                            {
+                                'content': seg.content,
+                                'font_family': seg.font_family,
+                                'font_style': seg.font_style,
+                                'font_size': seg.font_size,
+                                'letter_spacing': seg.letter_spacing,
+                                'is_icon': seg.is_icon,
+                            }
+                            for seg in line.segments
+                        ] if line.segments else [],
+                        'segment_gap': line.segment_gap,
                     }
                     for line in self.text.lines
                 ],
@@ -151,17 +166,38 @@ class NameplateConfig:
             t = data['text']
             config.text.lines = []
             for line_data in t.get('lines', []):
+                # Check for new segments format
+                segments_data = line_data.get('segments', [])
+                segments = []
+                if segments_data:
+                    # New multi-segment format
+                    for seg_data in segments_data:
+                        seg = TextSegment(
+                            content=seg_data.get('content', ''),
+                            font_family=seg_data.get('font_family', 'Arial'),
+                            font_style=seg_data.get('font_style', 'Regular'),
+                            font_size=seg_data.get('font_size', 12.0),
+                            letter_spacing=seg_data.get('letter_spacing', 0.0),
+                            is_icon=seg_data.get('is_icon', False),
+                        )
+                        segments.append(seg)
+
                 line = TextLineConfig(
+                    # Legacy single-segment properties
                     content=line_data.get('content', ''),
                     font_family=line_data.get('font_family', 'Arial'),
                     font_style=line_data.get('font_style', 'Regular'),
                     font_size=line_data.get('font_size', 12.0),
+                    letter_spacing=line_data.get('letter_spacing', 0.0),
+                    # New segment-based properties
+                    segments=segments,
+                    segment_gap=line_data.get('segment_gap', 2.0),
                 )
                 config.text.lines.append(line)
             config.text.style = TextStyle(t.get('style', 'raised'))
             config.text.depth = t.get('depth', 2.0)
             config.text.line_spacing = t.get('line_spacing', 1.2)
-        
+
         if 'border' in data:
             b = data['border']
             config.border.enabled = b.get('enabled', False)
@@ -321,14 +357,23 @@ class NameplateBuilder:
                 text_positioned = self._text_geometry.translate((0, text_y, text_z))
                 result = result.union(text_positioned)
             elif cfg.text.style == TextStyle.ENGRAVED:
-                # Engrave into top of plate - need text geometry that cuts down from top
-                # Regenerate text with appropriate depth for engraving
-                from .geometry.text_builder import TextBuilder
-                engrave_cfg = cfg.text
+                # Engrave into top of plate - create cutting geometry that extends beyond surface
+                from .geometry.text_builder import TextBuilder, TextConfig
+                engrave_cfg = TextConfig()
+                engrave_cfg.lines = cfg.text.lines
+                engrave_cfg.halign = cfg.text.halign
+                engrave_cfg.valign = cfg.text.valign
+                engrave_cfg.line_spacing = cfg.text.line_spacing
+                engrave_cfg.orientation = cfg.text.orientation
+                engrave_cfg.offset_x = cfg.text.offset_x
+                engrave_cfg.offset_y = cfg.text.offset_y
+                # Add extra depth for clean boolean cut
+                engrave_cfg.depth = cfg.text.depth + 0.5
                 engrave_text, _ = TextBuilder().generate(engrave_cfg)
                 if engrave_text is not None:
-                    # Position so text cuts down from top surface
-                    text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth))
+                    # Position so text starts above surface and cuts down into plate
+                    # Start 0.25mm above surface, cut down to (depth + 0.25) into plate
+                    text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth - 0.25))
                     result = result.cut(text_engraved)
                 # Clear text geometry - it's now part of the combined geometry (cut into plate)
                 self._text_geometry = None
@@ -341,11 +386,13 @@ class NameplateBuilder:
                 cutout_cfg.valign = cfg.text.valign
                 cutout_cfg.line_spacing = cfg.text.line_spacing
                 cutout_cfg.orientation = cfg.text.orientation
-                cutout_cfg.depth = plate_thickness + 1  # Extra to ensure clean cut
+                cutout_cfg.offset_x = cfg.text.offset_x
+                cutout_cfg.offset_y = cfg.text.offset_y
+                cutout_cfg.depth = plate_thickness + 2  # Extra to ensure clean cut through
                 cutout_text, _ = TextBuilder().generate(cutout_cfg)
                 if cutout_text is not None:
-                    # Position to cut through entire plate
-                    text_cutout = cutout_text.translate((0, 0, -0.5))
+                    # Position to cut through entire plate (start below, extend above)
+                    text_cutout = cutout_text.translate((0, 0, -1.0))
                     result = result.cut(text_cutout)
                 # Clear text geometry - it's now part of the combined geometry (cut through plate)
                 self._text_geometry = None

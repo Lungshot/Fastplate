@@ -5,7 +5,7 @@ UI panel for configuring text content and styling.
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame, QLineEdit, QGroupBox
+    QScrollArea, QFrame, QLineEdit, QGroupBox, QToolButton, QSizePolicy
 )
 from PyQt5.QtCore import pyqtSignal, Qt
 
@@ -13,64 +13,109 @@ from ui.widgets.slider_spin import SliderSpinBox, LabeledComboBox, LabeledLineEd
 from core.geometry.text_builder import TextStyle, TextAlign
 
 
-class TextLineWidget(QFrame):
-    """Widget for configuring a single line of text."""
-    
+class TextSegmentWidget(QFrame):
+    """Widget for configuring a single text segment within a line."""
+
     changed = pyqtSignal()
     remove_requested = pyqtSignal(object)
-    
-    def __init__(self, line_number: int = 1, parent=None):
+    move_up_requested = pyqtSignal(object)
+    move_down_requested = pyqtSignal(object)
+
+    def __init__(self, segment_number: int = 1, parent=None):
         super().__init__(parent)
-        self.line_number = line_number
-        
-        self.setFrameStyle(QFrame.StyledPanel)
-        self.setStyleSheet("QFrame { background-color: #353535; border-radius: 5px; }")
-        
+        self.segment_number = segment_number
+        self.is_icon = False  # Track if this segment is a Nerd Font icon
+
+        self.setFrameStyle(QFrame.Box)
+        self.setStyleSheet("QFrame { background-color: #404040; border: 1px solid #555; border-radius: 3px; margin: 2px; }")
+
         layout = QVBoxLayout(self)
-        layout.setSpacing(5)
-        
-        # Header with line number and remove button
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(3)
+
+        # Header with segment label and control buttons
         header = QHBoxLayout()
-        header.addWidget(QLabel(f"Line {line_number}"))
+        header.setSpacing(2)
+
+        self._label = QLabel(f"Seg {segment_number}")
+        self._label.setStyleSheet("font-size: 10px; color: #aaa;")
+        header.addWidget(self._label)
         header.addStretch()
-        
-        self._remove_btn = QPushButton("×")
-        self._remove_btn.setFixedSize(20, 20)
-        self._remove_btn.setStyleSheet("QPushButton { font-weight: bold; }")
+
+        # Move up button
+        self._up_btn = QToolButton()
+        self._up_btn.setText("▲")
+        self._up_btn.setFixedSize(18, 18)
+        self._up_btn.setToolTip("Move segment left")
+        self._up_btn.clicked.connect(lambda: self.move_up_requested.emit(self))
+        header.addWidget(self._up_btn)
+
+        # Move down button
+        self._down_btn = QToolButton()
+        self._down_btn.setText("▼")
+        self._down_btn.setFixedSize(18, 18)
+        self._down_btn.setToolTip("Move segment right")
+        self._down_btn.clicked.connect(lambda: self.move_down_requested.emit(self))
+        header.addWidget(self._down_btn)
+
+        # Remove button
+        self._remove_btn = QToolButton()
+        self._remove_btn.setText("×")
+        self._remove_btn.setFixedSize(18, 18)
+        self._remove_btn.setStyleSheet("QToolButton { font-weight: bold; color: #ff6666; }")
+        self._remove_btn.setToolTip("Remove segment")
         self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self))
         header.addWidget(self._remove_btn)
+
         layout.addLayout(header)
-        
+
         # Text content
         self._content_edit = QLineEdit()
-        self._content_edit.setPlaceholderText("Enter text...")
+        self._content_edit.setPlaceholderText("Text...")
         self._content_edit.textChanged.connect(self._on_changed)
         layout.addWidget(self._content_edit)
-        
+
         # Font selection row
         font_row = QHBoxLayout()
+        font_row.setSpacing(3)
 
         self._font_combo = FocusComboBox()
-        self._font_combo.setMinimumWidth(150)
+        self._font_combo.setMinimumWidth(100)
+        self._font_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._font_combo.currentTextChanged.connect(self._on_changed)
-        font_row.addWidget(QLabel("Font:"))
-        font_row.addWidget(self._font_combo, stretch=1)
+        font_row.addWidget(self._font_combo)
 
         self._style_combo = FocusComboBox()
         self._style_combo.addItems(["Regular", "Bold", "Italic", "Bold Italic"])
+        self._style_combo.setFixedWidth(80)
         self._style_combo.currentTextChanged.connect(self._on_changed)
         font_row.addWidget(self._style_combo)
 
         layout.addLayout(font_row)
-        
-        # Size slider
-        self._size_slider = SliderSpinBox("Size:", 4, 50, 12, decimals=1, suffix=" mm")
+
+        # Size and spacing row
+        size_row = QHBoxLayout()
+        size_row.setSpacing(3)
+
+        size_row.addWidget(QLabel("Size:"))
+        self._size_slider = SliderSpinBox("", 4, 50, 12, decimals=1, suffix="mm")
         self._size_slider.valueChanged.connect(self._on_changed)
-        layout.addWidget(self._size_slider)
-    
+        size_row.addWidget(self._size_slider)
+
+        layout.addLayout(size_row)
+
+        # Letter spacing (collapsed by default, shown on expand)
+        spacing_row = QHBoxLayout()
+        spacing_row.setSpacing(3)
+        spacing_row.addWidget(QLabel("Spacing:"))
+        self._spacing_slider = SliderSpinBox("", -50, 100, 0, decimals=0, suffix="%")
+        self._spacing_slider.valueChanged.connect(self._on_changed)
+        spacing_row.addWidget(self._spacing_slider)
+        layout.addLayout(spacing_row)
+
     def _on_changed(self, *args):
         self.changed.emit()
-    
+
     def set_fonts(self, font_names: list):
         """Set available fonts."""
         current = self._font_combo.currentText()
@@ -78,18 +123,25 @@ class TextLineWidget(QFrame):
         self._font_combo.addItems(font_names)
         if current in font_names:
             self._font_combo.setCurrentText(current)
-    
+
+    def update_label(self, number: int):
+        """Update the segment number label."""
+        self.segment_number = number
+        self._label.setText(f"Seg {number}")
+
     def get_config(self) -> dict:
-        """Get the line configuration."""
+        """Get the segment configuration."""
         return {
             'content': self._content_edit.text(),
             'font_family': self._font_combo.currentText(),
             'font_style': self._style_combo.currentText(),
             'font_size': self._size_slider.value(),
+            'letter_spacing': self._spacing_slider.value(),
+            'is_icon': self.is_icon,
         }
-    
+
     def set_config(self, config: dict):
-        """Set the line configuration."""
+        """Set the segment configuration."""
         self._content_edit.setText(config.get('content', ''))
         if config.get('font_family'):
             self._font_combo.setCurrentText(config['font_family'])
@@ -97,13 +149,228 @@ class TextLineWidget(QFrame):
             self._style_combo.setCurrentText(config['font_style'])
         if config.get('font_size'):
             self._size_slider.setValue(config['font_size'])
+        if 'letter_spacing' in config:
+            self._spacing_slider.setValue(config['letter_spacing'])
+        self.is_icon = config.get('is_icon', False)
+
+
+class TextLineWidget(QFrame):
+    """Widget for configuring a single line of text with multiple segments."""
+
+    changed = pyqtSignal()
+    remove_requested = pyqtSignal(object)
+
+    def __init__(self, line_number: int = 1, parent=None):
+        super().__init__(parent)
+        self.line_number = line_number
+        self._font_names = []
+        self._segment_widgets = []
+
+        self.setFrameStyle(QFrame.StyledPanel)
+        self.setStyleSheet("QFrame { background-color: #353535; border-radius: 5px; }")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(5)
+
+        # Header with line number and remove button
+        header = QHBoxLayout()
+        self._line_label = QLabel(f"Line {line_number}")
+        self._line_label.setStyleSheet("font-weight: bold;")
+        header.addWidget(self._line_label)
+        header.addStretch()
+
+        self._remove_btn = QPushButton("×")
+        self._remove_btn.setFixedSize(20, 20)
+        self._remove_btn.setStyleSheet("QPushButton { font-weight: bold; }")
+        self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self))
+        header.addWidget(self._remove_btn)
+        layout.addLayout(header)
+
+        # Container for segments
+        self._segments_container = QWidget()
+        self._segments_layout = QVBoxLayout(self._segments_container)
+        self._segments_layout.setContentsMargins(0, 0, 0, 0)
+        self._segments_layout.setSpacing(3)
+        layout.addWidget(self._segments_container)
+
+        # Add segment button and gap slider row
+        controls_row = QHBoxLayout()
+
+        add_seg_btn = QPushButton("+ Add Segment")
+        add_seg_btn.setFixedWidth(100)
+        add_seg_btn.clicked.connect(self._add_segment)
+        controls_row.addWidget(add_seg_btn)
+
+        controls_row.addWidget(QLabel("Gap:"))
+        self._gap_slider = SliderSpinBox("", 0, 10, 2, decimals=1, suffix="mm")
+        self._gap_slider.valueChanged.connect(self._on_changed)
+        controls_row.addWidget(self._gap_slider)
+
+        layout.addLayout(controls_row)
+
+        # Add initial segment
+        self._add_segment_silent()
+
+    def _add_segment(self):
+        """Add a new segment and emit changed signal."""
+        self._add_segment_silent()
+        self._on_changed()
+
+    def _add_segment_silent(self):
+        """Add a new segment without emitting signals."""
+        seg_num = len(self._segment_widgets) + 1
+        seg_widget = TextSegmentWidget(seg_num)
+        seg_widget.set_fonts(self._font_names)
+        seg_widget.changed.connect(self._on_changed)
+        seg_widget.remove_requested.connect(self._remove_segment)
+        seg_widget.move_up_requested.connect(self._move_segment_up)
+        seg_widget.move_down_requested.connect(self._move_segment_down)
+
+        self._segment_widgets.append(seg_widget)
+        self._segments_layout.addWidget(seg_widget)
+
+    def _remove_segment(self, widget):
+        """Remove a segment widget."""
+        if len(self._segment_widgets) <= 1:
+            return  # Keep at least one segment
+
+        idx = self._segment_widgets.index(widget)
+        self._segment_widgets.remove(widget)
+        self._segments_layout.removeWidget(widget)
+        widget.deleteLater()
+
+        # Renumber remaining segments
+        self._renumber_segments()
+        self._on_changed()
+
+    def _move_segment_up(self, widget):
+        """Move a segment up (left) in the list."""
+        idx = self._segment_widgets.index(widget)
+        if idx <= 0:
+            return  # Already at top
+
+        # Swap with previous
+        self._segment_widgets[idx], self._segment_widgets[idx-1] = \
+            self._segment_widgets[idx-1], self._segment_widgets[idx]
+
+        # Rebuild layout
+        self._rebuild_segments_layout()
+        self._on_changed()
+
+    def _move_segment_down(self, widget):
+        """Move a segment down (right) in the list."""
+        idx = self._segment_widgets.index(widget)
+        if idx >= len(self._segment_widgets) - 1:
+            return  # Already at bottom
+
+        # Swap with next
+        self._segment_widgets[idx], self._segment_widgets[idx+1] = \
+            self._segment_widgets[idx+1], self._segment_widgets[idx]
+
+        # Rebuild layout
+        self._rebuild_segments_layout()
+        self._on_changed()
+
+    def _rebuild_segments_layout(self):
+        """Rebuild the segments layout after reordering."""
+        # Remove all widgets from layout (but don't delete them)
+        for seg in self._segment_widgets:
+            self._segments_layout.removeWidget(seg)
+
+        # Re-add in new order
+        for seg in self._segment_widgets:
+            self._segments_layout.addWidget(seg)
+
+        self._renumber_segments()
+
+    def _renumber_segments(self):
+        """Update segment numbers after reordering or removal."""
+        for i, seg in enumerate(self._segment_widgets):
+            seg.update_label(i + 1)
+
+    def _on_changed(self, *args):
+        self.changed.emit()
+
+    def set_fonts(self, font_names: list):
+        """Set available fonts for all segments."""
+        self._font_names = font_names
+        for widget in self._segment_widgets:
+            widget.set_fonts(font_names)
+
+    def update_line_label(self, number: int):
+        """Update the line number label."""
+        self.line_number = number
+        self._line_label.setText(f"Line {number}")
+
+    def get_config(self) -> dict:
+        """Get the line configuration with all segments."""
+        segments_config = [w.get_config() for w in self._segment_widgets]
+
+        # For backward compatibility, if there's only one segment,
+        # also include legacy single-segment properties
+        if len(segments_config) == 1:
+            seg = segments_config[0]
+            return {
+                'content': seg.get('content', ''),
+                'font_family': seg.get('font_family', 'Arial'),
+                'font_style': seg.get('font_style', 'Regular'),
+                'font_size': seg.get('font_size', 12),
+                'letter_spacing': seg.get('letter_spacing', 0),
+                'segments': segments_config,
+                'segment_gap': self._gap_slider.value(),
+            }
+
+        return {
+            'segments': segments_config,
+            'segment_gap': self._gap_slider.value(),
+        }
+
+    def set_config(self, config: dict):
+        """Set the line configuration."""
+        # Block signals during bulk configuration
+        self.blockSignals(True)
+
+        try:
+            # Clear existing segments
+            while self._segment_widgets:
+                widget = self._segment_widgets.pop()
+                widget.blockSignals(True)
+                self._segments_layout.removeWidget(widget)
+                widget.deleteLater()
+
+            # Check for new segment format
+            segments = config.get('segments', [])
+
+            if segments:
+                # New multi-segment format
+                for seg_config in segments:
+                    self._add_segment_silent()
+                    self._segment_widgets[-1].set_config(seg_config)
+            else:
+                # Legacy single-segment format - convert to segment
+                self._add_segment_silent()
+                self._segment_widgets[0].set_config({
+                    'content': config.get('content', ''),
+                    'font_family': config.get('font_family', 'Arial'),
+                    'font_style': config.get('font_style', 'Regular'),
+                    'font_size': config.get('font_size', 12),
+                    'letter_spacing': config.get('letter_spacing', 0),
+                })
+
+            # Set gap
+            if 'segment_gap' in config:
+                self._gap_slider.setValue(config['segment_gap'])
+
+        finally:
+            self.blockSignals(False)
 
 
 class TextPanel(QWidget):
     """Panel for all text settings."""
-    
+
     settings_changed = pyqtSignal()
-    
+    google_icon_selected = pyqtSignal(dict)  # Emitted when Google icon is selected
+
     def __init__(self, parent=None):
         super().__init__(parent)
         
@@ -124,7 +391,7 @@ class TextPanel(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setMaximumHeight(300)
+        scroll.setMaximumHeight(450)
         
         self._lines_container = QWidget()
         self._lines_layout = QVBoxLayout(self._lines_container)
@@ -185,11 +452,15 @@ class TextPanel(QWidget):
 
         layout.addWidget(style_group)
         
-        # Add icon button
+        # Add icon buttons
         icon_btn = QPushButton("🔣 Add Icon (Nerd Fonts)")
         icon_btn.clicked.connect(self._on_add_icon)
         layout.addWidget(icon_btn)
-        
+
+        google_icon_btn = QPushButton("🔣 Add Icon (Google)")
+        google_icon_btn.clicked.connect(self._on_add_google_icon)
+        layout.addWidget(google_icon_btn)
+
         layout.addStretch()
         
         # Add initial line
@@ -215,15 +486,15 @@ class TextPanel(QWidget):
         """Remove a text line widget."""
         if len(self._line_widgets) <= 1:
             return  # Keep at least one line
-        
+
         self._line_widgets.remove(widget)
         self._lines_layout.removeWidget(widget)
         widget.deleteLater()
-        
+
         # Renumber remaining lines
         for i, w in enumerate(self._line_widgets):
-            w.line_number = i + 1
-        
+            w.update_line_label(i + 1)
+
         self._on_changed()
     
     def _on_changed(self, *args):
@@ -236,15 +507,39 @@ class TextPanel(QWidget):
         if dialog.exec_():
             icon_data = dialog.get_selected_icon()
             if icon_data:
-                # Insert icon character into the first line or create a new line
                 icon_char = icon_data.get('char', '')
                 if icon_char and self._line_widgets:
-                    # Insert into first line's content
+                    # Add a new segment to the first line with the icon
                     line_widget = self._line_widgets[0]
-                    current_text = line_widget._content_edit.text()
-                    line_widget._content_edit.setText(current_text + icon_char)
+                    line_widget._add_segment_silent()
+                    new_seg = line_widget._segment_widgets[-1]
+                    new_seg._content_edit.setText(icon_char)
+                    new_seg.is_icon = True
+                    # Set the font path if available
+                    font_path = icon_data.get('font_path')
+                    if font_path:
+                        # Add the Nerd Font to the combo if not present
+                        font_name = "Symbols Nerd Font"
+                        if font_name not in self._font_names:
+                            self._font_names.append(font_name)
+                            line_widget.set_fonts(self._font_names)
+                        new_seg._font_combo.setCurrentText(font_name)
                     self._on_changed()
-    
+
+    def _on_add_google_icon(self):
+        """Open Google Material Icons browser dialog."""
+        from ui.dialogs.material_icons_dialog import MaterialIconsDialog
+        dialog = MaterialIconsDialog(self)
+        if dialog.exec_():
+            icon_data = dialog.get_selected_icon()
+            if icon_data:
+                # Signal to main window that we want to add an SVG icon
+                # The main window will handle adding it via SVG panel
+                self._pending_google_icon = icon_data
+                # For now, we'll emit settings changed so the main window
+                # can check for pending icons
+                self.google_icon_selected.emit(icon_data)
+
     def set_fonts(self, font_names: list):
         """Set available fonts for all line widgets."""
         self._font_names = font_names
