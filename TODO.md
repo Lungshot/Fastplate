@@ -165,7 +165,7 @@ python main.py
 ### Building Distribution
 ```bash
 # Run build.bat or:
-pyinstaller nameplate_generator.spec
+pyinstaller fastplate.spec
 # Then copy casadi DLLs to dist/Fastplate/_internal/
 ```
 

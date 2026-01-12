@@ -1,4 +1,4 @@
-# 3D Nameplate Generator
+# Fastplate
 
 A Windows application for creating customizable 3D-printable nameplates, door signs, desk signs, and more.
 
@@ -17,7 +17,7 @@ A Windows application for creating customizable 3D-printable nameplates, door si
 
 ### Option 1: Pre-built Executable (Recommended)
 
-Download the latest release from the Releases page and run `NameplateGenerator.exe`.
+Download the latest release from the Releases page and run `Fastplate.exe`.
 
 ### Option 2: Run from Source
 
@@ -29,8 +29,8 @@ Download the latest release from the Releases page and run `NameplateGenerator.e
 
 ```bash
 # Create conda environment
-conda create -n nameplate python=3.10
-conda activate nameplate
+conda create -n fastplate python=3.10
+conda activate fastplate
 
 # Install CadQuery (required - best via conda)
 conda install -c cadquery -c conda-forge cadquery
@@ -49,13 +49,13 @@ To build a standalone Windows executable:
 
 ```bash
 # Activate your conda environment with CadQuery
-conda activate nameplate
+conda activate fastplate
 
 # Run the build script
 build.bat
 ```
 
-The executable will be created in `dist/NameplateGenerator/`.
+The executable will be created in `dist/Fastplate/`.
 
 ### Build Requirements
 
@@ -82,7 +82,7 @@ To add a custom application icon:
 ## Project Structure
 
 ```
-Nameplate_Gen/
+Fastplate/
 ├── src/
 │   ├── main.py              # Application entry point
 │   ├── core/                # 3D geometry generation
@@ -99,7 +99,7 @@ Nameplate_Gen/
 │   ├── utils/               # Utility modules
 │   └── resources/           # Bundled data files
 ├── requirements.txt         # Python dependencies
-├── nameplate_generator.spec # PyInstaller config
+├── fastplate.spec           # PyInstaller config
 └── build.bat               # Build script
 ```
 

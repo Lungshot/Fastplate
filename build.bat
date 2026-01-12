@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM 3D Nameplate Generator - Build Script for Windows
+REM Fastplate - Build Script for Windows
 REM ============================================================================
 REM
 REM Usage:
@@ -22,8 +22,8 @@ set PROJECT_DIR=%~dp0
 set BUILD_DIR=%PROJECT_DIR%build
 set DIST_DIR=%PROJECT_DIR%dist
 set SRC_DIR=%PROJECT_DIR%src
-set SPEC_FILE=%PROJECT_DIR%nameplate_generator.spec
-set SPEC_ONEFILE=%PROJECT_DIR%nameplate_generator_onefile.spec
+set SPEC_FILE=%PROJECT_DIR%fastplate.spec
+set SPEC_ONEFILE=%PROJECT_DIR%fastplate_onefile.spec
 
 REM Check for command argument
 if "%1"=="clean" goto :clean
@@ -37,7 +37,7 @@ REM ============================================================================
 :build
 echo.
 echo ============================================================
-echo  3D Nameplate Generator - Build (Folder Distribution)
+echo  Fastplate - Build (Folder Distribution)
 echo ============================================================
 echo.
 
@@ -56,8 +56,8 @@ if errorlevel 1 (
 echo [2/2] Build complete!
 echo.
 echo ============================================================
-echo  Output: %DIST_DIR%\NameplateGenerator\
-echo  Run:    %DIST_DIR%\NameplateGenerator\NameplateGenerator.exe
+echo  Output: %DIST_DIR%\Fastplate\
+echo  Run:    %DIST_DIR%\Fastplate\Fastplate.exe
 echo ============================================================
 goto :end
 
@@ -67,7 +67,7 @@ REM ============================================================================
 :build_onefile
 echo.
 echo ============================================================
-echo  3D Nameplate Generator - Build (Single File)
+echo  Fastplate - Build (Single File)
 echo ============================================================
 echo.
 echo NOTE: Single file builds are larger and slower to start,
@@ -89,7 +89,7 @@ if errorlevel 1 (
 echo [2/2] Build complete!
 echo.
 echo ============================================================
-echo  Output: %DIST_DIR%\NameplateGenerator.exe
+echo  Output: %DIST_DIR%\Fastplate.exe
 echo ============================================================
 goto :end
 
