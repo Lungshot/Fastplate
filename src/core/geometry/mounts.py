@@ -108,34 +108,50 @@ class MountGenerator:
                  config: Optional[MountConfig] = None) -> Tuple[Optional[cq.Workplane], Optional[cq.Workplane]]:
         """
         Generate mounting features.
-        
+
         Args:
             plate_width: Width of the base plate
             plate_height: Height of the base plate
             plate_thickness: Thickness of the base plate
             config: Optional config override
-            
+
         Returns:
             Tuple of (features_to_add, features_to_subtract)
             Either may be None if not applicable.
         """
         cfg = config or self.config
-        
+
+        print(f"[Mount] Generating mount type: {cfg.mount_type}, plate: {plate_width}x{plate_height}x{plate_thickness}")
+
         if cfg.mount_type == MountType.NONE:
+            print("[Mount] Mount type is NONE, returning None")
             return None, None
         elif cfg.mount_type == MountType.DESK_STAND:
-            return self._make_desk_stand(plate_width, plate_height, plate_thickness, cfg), None
+            result = self._make_desk_stand(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Desk stand result: {result}")
+            return result, None
         elif cfg.mount_type == MountType.SCREW_HOLES:
-            return None, self._make_screw_holes(plate_width, plate_height, plate_thickness, cfg)
+            result = self._make_screw_holes(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Screw holes result: {result}")
+            return None, result
         elif cfg.mount_type == MountType.KEYHOLE:
-            return None, self._make_keyholes(plate_width, plate_height, plate_thickness, cfg)
+            result = self._make_keyholes(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Keyhole result: {result}")
+            return None, result
         elif cfg.mount_type == MountType.MAGNET_POCKETS:
-            return None, self._make_magnet_pockets(plate_width, plate_height, plate_thickness, cfg)
+            result = self._make_magnet_pockets(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Magnet pockets result: {result}")
+            return None, result
         elif cfg.mount_type == MountType.HANGING_HOLE:
-            return None, self._make_hanging_holes(plate_width, plate_height, plate_thickness, cfg)
+            result = self._make_hanging_holes(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Hanging holes result: {result}")
+            return None, result
         elif cfg.mount_type == MountType.ADHESIVE_RECESS:
-            return None, self._make_adhesive_recess(plate_width, plate_height, plate_thickness, cfg)
-        
+            result = self._make_adhesive_recess(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Adhesive recess result: {result}")
+            return None, result
+
+        print(f"[Mount] Unknown mount type: {cfg.mount_type}")
         return None, None
     
     def _make_desk_stand(self, plate_width: float, plate_height: float,
@@ -333,7 +349,7 @@ class MountGenerator:
 
         if cfg.hanging_hole_position == "top_center":
             positions = [(0, plate_height/2 - cfg.hole_edge_distance)]
-        elif cfg.hanging_hole_position == "corners":
+        elif cfg.hanging_hole_position in ("corners", "top_corners"):
             positions = [
                 (-plate_width/2 + cfg.hole_edge_distance, plate_height/2 - cfg.hole_edge_distance),
                 (plate_width/2 - cfg.hole_edge_distance, plate_height/2 - cfg.hole_edge_distance)

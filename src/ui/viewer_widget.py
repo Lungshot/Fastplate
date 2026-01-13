@@ -331,6 +331,16 @@ class Viewer3DWidget(QWidget):
             self.clear_geometry()
             return True
 
+        # Save current camera state if we need to preserve it
+        saved_camera = None
+        if not auto_fit:
+            saved_camera = {
+                'distance': self._view.opts.get('distance', 150),
+                'elevation': self._view.opts.get('elevation', 30),
+                'azimuth': self._view.opts.get('azimuth', 45),
+                'center': self._view.opts.get('center', pg.Vector(0, 0, 0)),
+            }
+
         try:
             # Get mesh data from CadQuery geometry
             vertices, faces = self._tessellate_geometry(geometry)
@@ -381,6 +391,14 @@ class Viewer3DWidget(QWidget):
             # Auto-fit view only if requested (new geometry)
             if auto_fit:
                 self.fit_view()
+            elif saved_camera:
+                # Restore camera state to preserve user's view
+                self._view.opts['center'] = saved_camera['center']
+                self._view.setCameraPosition(
+                    distance=saved_camera['distance'],
+                    elevation=saved_camera['elevation'],
+                    azimuth=saved_camera['azimuth']
+                )
 
             return True
 
@@ -445,6 +463,16 @@ class Viewer3DWidget(QWidget):
         """
         if not PYQTGRAPH_AVAILABLE or not CADQUERY_AVAILABLE:
             return False
+
+        # Save current camera state if we need to preserve it
+        saved_camera = None
+        if not auto_fit:
+            saved_camera = {
+                'distance': self._view.opts.get('distance', 150),
+                'elevation': self._view.opts.get('elevation', 30),
+                'azimuth': self._view.opts.get('azimuth', 45),
+                'center': self._view.opts.get('center', pg.Vector(0, 0, 0)),
+            }
 
         # Clear existing meshes
         self.clear_geometry()
@@ -512,6 +540,14 @@ class Viewer3DWidget(QWidget):
             # Auto-fit view only if requested
             if auto_fit:
                 self.fit_view()
+            elif saved_camera:
+                # Restore camera state to preserve user's view
+                self._view.opts['center'] = saved_camera['center']
+                self._view.setCameraPosition(
+                    distance=saved_camera['distance'],
+                    elevation=saved_camera['elevation'],
+                    azimuth=saved_camera['azimuth']
+                )
 
             return True
 

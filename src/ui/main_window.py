@@ -232,6 +232,9 @@ class MainWindow(QMainWindow):
         # Google icon selection from text panel
         self._text_panel.google_icon_selected.connect(self._on_google_icon_selected)
 
+        # Font Awesome icon selection from text panel
+        self._text_panel.font_awesome_icon_selected.connect(self._on_font_awesome_icon_selected)
+
         # Preset selection
         self._preset_panel.preset_selected.connect(self._on_preset_selected)
         self._preset_panel.save_requested.connect(self._on_save_preset)
@@ -602,6 +605,30 @@ class MainWindow(QMainWindow):
                     self,
                     "Icon Import Failed",
                     f"Could not import the Google icon '{name}'.\n"
+                    "The icon may not contain valid path data."
+                )
+
+    def _on_font_awesome_icon_selected(self, icon_data: dict):
+        """Handle Font Awesome icon selection from text panel."""
+        svg_content = icon_data.get('svg_content')
+        name = icon_data.get('name', 'Font Awesome Icon')
+        size = icon_data.get('size', 12)
+        style = icon_data.get('style', 'solid')
+
+        if svg_content:
+            # Add the icon to the SVG panel
+            display_name = f"{name} ({style})"
+            success = self._svg_panel.add_svg_from_content(svg_content, display_name, target_size=size)
+
+            if success:
+                # Switch to SVG tab to show the added icon
+                self._tabs.setCurrentWidget(self._svg_panel)
+                self._status_label.setText(f"Added Font Awesome icon: {name}")
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Icon Import Failed",
+                    f"Could not import the Font Awesome icon '{name}'.\n"
                     "The icon may not contain valid path data."
                 )
 

@@ -468,6 +468,7 @@ class TextPanel(QWidget):
 
     settings_changed = pyqtSignal()
     google_icon_selected = pyqtSignal(dict)  # Emitted when Google icon is selected
+    font_awesome_icon_selected = pyqtSignal(dict)  # Emitted when Font Awesome icon is selected
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -549,8 +550,12 @@ class TextPanel(QWidget):
         style_layout.addLayout(orient_row)
 
         layout.addWidget(style_group)
-        
+
         # Add icon buttons
+        font_awesome_btn = QPushButton("🔣 Add Icon (Font Awesome)")
+        font_awesome_btn.clicked.connect(self._on_add_font_awesome_icon)
+        layout.addWidget(font_awesome_btn)
+
         icon_btn = QPushButton("🔣 Add Icon (Nerd Fonts)")
         icon_btn.clicked.connect(self._on_add_icon)
         layout.addWidget(icon_btn)
@@ -637,6 +642,17 @@ class TextPanel(QWidget):
                 # For now, we'll emit settings changed so the main window
                 # can check for pending icons
                 self.google_icon_selected.emit(icon_data)
+
+    def _on_add_font_awesome_icon(self):
+        """Open Font Awesome Icons browser dialog."""
+        from ui.dialogs.font_awesome_dialog import FontAwesomeDialog
+        dialog = FontAwesomeDialog(self)
+        if dialog.exec_():
+            icon_data = dialog.get_selected_icon()
+            if icon_data:
+                # Signal to main window that we want to add an SVG icon
+                # The main window will handle adding it via SVG panel
+                self.font_awesome_icon_selected.emit(icon_data)
 
     def set_fonts(self, font_names: list):
         """Set available fonts for all line widgets."""

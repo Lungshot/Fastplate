@@ -287,6 +287,23 @@ class NameplateBuilder:
             "num_svg_elements": len(cfg.svg_elements),
         })
 
+        # Import OCP types for compound handling (used by text and SVG)
+        from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Solid
+        from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+
+        def extract_solids_recursive(shape, solids_list):
+            """Recursively extract all solids from a shape (including nested compounds)."""
+            if hasattr(shape, 'wrapped'):
+                shape = shape.wrapped
+            shape_type = shape.ShapeType()
+            if shape_type == TopAbs_COMPOUND:
+                iterator = TopoDS_Iterator(shape)
+                while iterator.More():
+                    extract_solids_recursive(iterator.Value(), solids_list)
+                    iterator.Next()
+            elif shape_type == TopAbs_SOLID:
+                solids_list.append(shape)
+
         # Generate text first (needed for auto-sizing and text-only mode)
         debug_log.debug("Generating text geometry...")
         self._text_geometry, text_bbox = self._text_gen.generate(cfg.text)
@@ -390,24 +407,7 @@ class NameplateBuilder:
                 # Position text on plate surface and union
                 text_positioned = self._text_geometry.translate((0, text_y, text_z))
                 # Handle compounds (from multi-segment text) by extracting solids
-                # CadQuery's union doesn't work well with TopoDS_Compound directly
                 try:
-                    from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Solid
-                    from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
-
-                    def extract_solids_recursive(shape, solids_list):
-                        """Recursively extract all solids from a shape (including nested compounds)."""
-                        if hasattr(shape, 'wrapped'):
-                            shape = shape.wrapped
-                        shape_type = shape.ShapeType()
-                        if shape_type == TopAbs_COMPOUND:
-                            iterator = TopoDS_Iterator(shape)
-                            while iterator.More():
-                                extract_solids_recursive(iterator.Value(), solids_list)
-                                iterator.Next()
-                        elif shape_type == TopAbs_SOLID:
-                            solids_list.append(shape)
-
                     text_val = text_positioned.val()
                     all_solids = []
                     extract_solids_recursive(text_val, all_solids)
@@ -418,7 +418,6 @@ class NameplateBuilder:
                             solid_wp = cq.Workplane("XY").newObject([cq.Shape(solid)])
                             result = result.union(solid_wp)
                     else:
-                        # No solids found, try regular union as fallback
                         debug_log.debug("No solids extracted, trying regular union")
                         result = result.union(text_positioned)
                 except Exception as e:
@@ -531,9 +530,12 @@ class NameplateBuilder:
                 self._text_geometry = None
         
         # Add mount features
+        debug_log.debug(f"Mount features: add={mount_add is not None}, subtract={mount_subtract is not None}")
         if mount_add is not None:
+            debug_log.debug("Applying mount_add via union")
             result = result.union(mount_add)
         if mount_subtract is not None:
+            debug_log.debug("Applying mount_subtract via cut")
             result = result.cut(mount_subtract)
 
         # Add SVG elements
@@ -558,8 +560,25 @@ class NameplateBuilder:
 
                 # Handle style (raised/engraved/cutout)
                 if svg_elem.style == "raised":
-                    svg_final = svg_positioned.translate((0, 0, plate_thickness))
-                    result = result.union(svg_final)
+                    # Position slightly INTO the plate for overlap to ensure clean union
+                    # Without overlap, CadQuery union can fail when shapes just touch
+                    svg_final = svg_positioned.translate((0, 0, plate_thickness - 0.1))
+                    # Handle compounds (from multi-path SVGs) by extracting solids
+                    try:
+                        svg_val = svg_final.val()
+                        all_solids = []
+                        extract_solids_recursive(svg_val, all_solids)
+
+                        if all_solids:
+                            debug_log.debug(f"SVG raised: extracted {len(all_solids)} solids")
+                            for solid in all_solids:
+                                solid_wp = cq.Workplane("XY").newObject([cq.Shape(solid)])
+                                result = result.union(solid_wp)
+                        else:
+                            result = result.union(svg_final)
+                    except Exception as e:
+                        debug_log.debug(f"SVG compound handling failed: {e}, trying regular union")
+                        result = result.union(svg_final)
                 elif svg_elem.style == "engraved":
                     svg_final = svg_positioned.translate((0, 0, plate_thickness - svg_elem.depth))
                     result = result.cut(svg_final)
