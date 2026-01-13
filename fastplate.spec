@@ -26,6 +26,9 @@ datas = [
     # Google Material Icons data
     (os.path.join(src_dir, 'resources', 'data', 'material_icons.json'),
      os.path.join('resources', 'data')),
+    # Font Awesome Icons data
+    (os.path.join(src_dir, 'resources', 'data', 'font_awesome_icons.json'),
+     os.path.join('resources', 'data')),
     # Built-in presets
     (os.path.join(src_dir, 'resources', 'presets'),
      os.path.join('resources', 'presets')),
