@@ -15,6 +15,7 @@ from .geometry.mounts import MountGenerator, MountConfig, MountType
 from .geometry.sweeping import SweepingPlateGenerator, SweepingConfig
 from .geometry.svg_importer import SVGImporter, SVGElement
 from .export.exporter import Exporter, ExportOptions, ExportFormat
+from utils.debug_log import debug_log
 
 
 @dataclass
@@ -86,6 +87,7 @@ class NameplateConfig:
                                 'font_style': seg.font_style,
                                 'font_size': seg.font_size,
                                 'letter_spacing': seg.letter_spacing,
+                                'vertical_offset': seg.vertical_offset,
                                 'is_icon': seg.is_icon,
                             }
                             for seg in line.segments
@@ -178,6 +180,7 @@ class NameplateConfig:
                             font_style=seg_data.get('font_style', 'Regular'),
                             font_size=seg_data.get('font_size', 12.0),
                             letter_spacing=seg_data.get('letter_spacing', 0.0),
+                            vertical_offset=seg_data.get('vertical_offset', 0.0),
                             is_icon=seg_data.get('is_icon', False),
                         )
                         segments.append(seg)
@@ -267,17 +270,27 @@ class NameplateBuilder:
     def build(self, config: Optional[NameplateConfig] = None) -> cq.Workplane:
         """
         Build the complete nameplate geometry.
-        
+
         Args:
             config: Optional config override
-            
+
         Returns:
             CadQuery Workplane with the complete nameplate.
         """
         cfg = config or self.config
 
+        debug_log.log_geometry("BUILD_START", {
+            "plate_shape": cfg.plate.shape.value,
+            "text_style": cfg.text.style.value,
+            "num_lines": len(cfg.text.lines),
+            "mount_type": cfg.mount.mount_type.value,
+            "num_svg_elements": len(cfg.svg_elements),
+        })
+
         # Generate text first (needed for auto-sizing and text-only mode)
+        debug_log.debug("Generating text geometry...")
         self._text_geometry, text_bbox = self._text_gen.generate(cfg.text)
+        debug_log.log_geometry("TEXT_GENERATED", {"bbox": str(text_bbox) if text_bbox else "None"})
 
         # Handle "none" plate shape (text only)
         if cfg.plate.shape == PlateShape.NONE:
@@ -340,7 +353,28 @@ class NameplateBuilder:
                 result = result.union(border_geometry)
         
         # Handle text based on style
+        # Check if text geometry has actual geometry (not just an empty workplane)
+        # Note: compounds from multi-segment text won't show up in .solids().vals()
+        # so we check for valid bounding box instead
+        text_has_geometry = False
         if self._text_geometry is not None:
+            try:
+                val = self._text_geometry.val()
+                debug_log.debug(f"Text geometry val type: {type(val).__name__}")
+                bb = val.BoundingBox()
+                # Check if bounding box has non-zero size
+                text_has_geometry = (bb.xmax - bb.xmin) > 0.001 or (bb.ymax - bb.ymin) > 0.001
+                debug_log.debug(f"Text geometry bbox: x={bb.xmin:.2f} to {bb.xmax:.2f}, y={bb.ymin:.2f} to {bb.ymax:.2f}, has_geometry={text_has_geometry}")
+            except Exception as e:
+                debug_log.debug(f"Text geometry bbox check failed: {e}")
+                # Fallback: try to check solids
+                try:
+                    text_has_geometry = len(self._text_geometry.solids().vals()) > 0
+                    debug_log.debug(f"Fallback solids check: {text_has_geometry}")
+                except Exception as e2:
+                    debug_log.debug(f"Fallback solids check failed: {e2}")
+
+        if text_has_geometry:
             # For sweeping plates, position text at the center of the curved surface
             if cfg.plate.shape == PlateShape.SWEEPING:
                 import math
@@ -355,7 +389,41 @@ class NameplateBuilder:
             if cfg.text.style == TextStyle.RAISED:
                 # Position text on plate surface and union
                 text_positioned = self._text_geometry.translate((0, text_y, text_z))
-                result = result.union(text_positioned)
+                # Handle compounds (from multi-segment text) by extracting solids
+                # CadQuery's union doesn't work well with TopoDS_Compound directly
+                try:
+                    from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator, TopoDS_Solid
+                    from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+
+                    def extract_solids_recursive(shape, solids_list):
+                        """Recursively extract all solids from a shape (including nested compounds)."""
+                        if hasattr(shape, 'wrapped'):
+                            shape = shape.wrapped
+                        shape_type = shape.ShapeType()
+                        if shape_type == TopAbs_COMPOUND:
+                            iterator = TopoDS_Iterator(shape)
+                            while iterator.More():
+                                extract_solids_recursive(iterator.Value(), solids_list)
+                                iterator.Next()
+                        elif shape_type == TopAbs_SOLID:
+                            solids_list.append(shape)
+
+                    text_val = text_positioned.val()
+                    all_solids = []
+                    extract_solids_recursive(text_val, all_solids)
+
+                    if all_solids:
+                        debug_log.debug(f"Extracted {len(all_solids)} solids from text geometry")
+                        for solid in all_solids:
+                            solid_wp = cq.Workplane("XY").newObject([cq.Shape(solid)])
+                            result = result.union(solid_wp)
+                    else:
+                        # No solids found, try regular union as fallback
+                        debug_log.debug("No solids extracted, trying regular union")
+                        result = result.union(text_positioned)
+                except Exception as e:
+                    debug_log.debug(f"Compound handling failed: {e}, trying regular union")
+                    result = result.union(text_positioned)
             elif cfg.text.style == TextStyle.ENGRAVED:
                 # Engrave into top of plate - create cutting geometry that extends beyond surface
                 from .geometry.text_builder import TextBuilder, TextConfig
@@ -372,9 +440,41 @@ class NameplateBuilder:
                 engrave_text, _ = TextBuilder().generate(engrave_cfg)
                 if engrave_text is not None:
                     # Position so text starts above surface and cuts down into plate
-                    # Start 0.25mm above surface, cut down to (depth + 0.25) into plate
                     text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth - 0.25))
-                    result = result.cut(text_engraved)
+                    # Handle compounds (from multi-segment text)
+                    try:
+                        from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
+                        from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+
+                        def extract_solids_recursive(shape, solids_list):
+                            if hasattr(shape, 'wrapped'):
+                                shape = shape.wrapped
+                            shape_type = shape.ShapeType()
+                            if shape_type == TopAbs_COMPOUND:
+                                iterator = TopoDS_Iterator(shape)
+                                while iterator.More():
+                                    extract_solids_recursive(iterator.Value(), solids_list)
+                                    iterator.Next()
+                            elif shape_type == TopAbs_SOLID:
+                                solids_list.append(shape)
+
+                        text_val = text_engraved.val()
+                        all_solids = []
+                        extract_solids_recursive(text_val, all_solids)
+
+                        if all_solids:
+                            debug_log.debug(f"Engrave: cutting {len(all_solids)} solids")
+                            for solid in all_solids:
+                                solid_wp = cq.Workplane("XY").newObject([cq.Shape(solid)])
+                                result = result.cut(solid_wp)
+                        else:
+                            result = result.cut(text_engraved)
+                    except Exception as e:
+                        debug_log.debug(f"Compound handling failed: {e}, trying regular cut")
+                        try:
+                            result = result.cut(text_engraved)
+                        except:
+                            pass
                 # Clear text geometry - it's now part of the combined geometry (cut into plate)
                 self._text_geometry = None
             elif cfg.text.style == TextStyle.CUTOUT:
@@ -393,7 +493,40 @@ class NameplateBuilder:
                 if cutout_text is not None:
                     # Position to cut through entire plate (start below, extend above)
                     text_cutout = cutout_text.translate((0, 0, -1.0))
-                    result = result.cut(text_cutout)
+                    # Handle compounds (from multi-segment text)
+                    try:
+                        from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
+                        from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+
+                        def extract_solids_recursive(shape, solids_list):
+                            if hasattr(shape, 'wrapped'):
+                                shape = shape.wrapped
+                            shape_type = shape.ShapeType()
+                            if shape_type == TopAbs_COMPOUND:
+                                iterator = TopoDS_Iterator(shape)
+                                while iterator.More():
+                                    extract_solids_recursive(iterator.Value(), solids_list)
+                                    iterator.Next()
+                            elif shape_type == TopAbs_SOLID:
+                                solids_list.append(shape)
+
+                        text_val = text_cutout.val()
+                        all_solids = []
+                        extract_solids_recursive(text_val, all_solids)
+
+                        if all_solids:
+                            debug_log.debug(f"Cutout: cutting {len(all_solids)} solids")
+                            for solid in all_solids:
+                                solid_wp = cq.Workplane("XY").newObject([cq.Shape(solid)])
+                                result = result.cut(solid_wp)
+                        else:
+                            result = result.cut(text_cutout)
+                    except Exception as e:
+                        debug_log.debug(f"Compound handling failed: {e}, trying regular cut")
+                        try:
+                            result = result.cut(text_cutout)
+                        except:
+                            pass
                 # Clear text geometry - it's now part of the combined geometry (cut through plate)
                 self._text_geometry = None
         

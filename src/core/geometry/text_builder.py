@@ -46,6 +46,7 @@ class TextSegment:
     font_style: str = "Regular"  # Regular, Bold, Italic, Bold Italic
     font_size: float = 12.0      # mm height
     letter_spacing: float = 0.0  # Additional spacing between letters (%)
+    vertical_offset: float = 0.0 # mm vertical offset (positive = up, negative = down)
     is_icon: bool = False        # True if this is a Nerd Font icon
 
     def get_cadquery_kind(self) -> str:
@@ -259,7 +260,9 @@ class TextBuilder:
                 compound = TopoDS_Compound()
                 builder.MakeCompound(compound)
                 for solid in all_solids:
-                    builder.Add(compound, solid)
+                    # Extract OCP shape from CadQuery object
+                    shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
+                    builder.Add(compound, shape)
                 combined = cq.Workplane("XY").newObject([compound])
             else:
                 combined = positioned_objects[0]
@@ -324,12 +327,12 @@ class TextBuilder:
         positioned_segments = []
         current_x = -total_width / 2
 
-        for seg_obj, seg_width, seg_height in zip(segment_objects, segment_widths, segment_heights):
+        for seg, seg_obj, seg_width, seg_height in zip(active_segments, segment_objects, segment_widths, segment_heights):
             if seg_obj is not None:
                 # Center segment at current position
                 seg_center_x = current_x + seg_width / 2
-                # Align to baseline (bottom of tallest segment)
-                y_offset = (max_height - seg_height) / 2  # Center vertically
+                # Align to baseline (bottom of tallest segment) + vertical offset
+                y_offset = (max_height - seg_height) / 2 + seg.vertical_offset
                 positioned = seg_obj.translate((seg_center_x, y_offset, 0))
                 positioned_segments.append(positioned)
 
@@ -342,27 +345,34 @@ class TextBuilder:
         if len(positioned_segments) == 1:
             combined = positioned_segments[0]
         else:
-            all_solids = []
-            for obj in positioned_segments:
-                try:
-                    solids = obj.solids().vals()
-                    all_solids.extend(solids)
-                except:
-                    try:
-                        all_solids.append(obj.val())
-                    except:
-                        pass
+            # Collect all shapes from positioned segments
+            from OCP.TopoDS import TopoDS_Compound
+            from OCP.BRep import BRep_Builder
 
-            if all_solids:
-                from OCP.TopoDS import TopoDS_Compound
-                from OCP.BRep import BRep_Builder
+            all_shapes = []
+            for i, obj in enumerate(positioned_segments):
+                try:
+                    # Get the underlying shape value
+                    val = obj.val()
+                    if hasattr(val, 'wrapped'):
+                        shape = val.wrapped
+                    else:
+                        shape = val
+                    all_shapes.append(shape)
+                    print(f"[TextBuilder] Segment {i}: got shape type {type(shape).__name__}")
+                except Exception as e:
+                    print(f"[TextBuilder] Segment {i}: failed to get shape: {e}")
+
+            if all_shapes:
+                print(f"[TextBuilder] Combining {len(all_shapes)} shapes into compound")
                 builder = BRep_Builder()
                 compound = TopoDS_Compound()
                 builder.MakeCompound(compound)
-                for solid in all_solids:
-                    builder.Add(compound, solid)
-                combined = cq.Workplane("XY").newObject([compound])
+                for shape in all_shapes:
+                    builder.Add(compound, shape)
+                combined = cq.Workplane("XY").newObject([cq.Shape(compound)])
             else:
+                print("[TextBuilder] WARNING: No shapes found, using first segment only")
                 combined = positioned_segments[0]
 
         # Calculate bounding box
@@ -501,7 +511,9 @@ class TextBuilder:
                     compound = TopoDS_Compound()
                     builder.MakeCompound(compound)
                     for solid in all_solids:
-                        builder.Add(compound, solid)
+                        # Extract OCP shape from CadQuery object
+                        shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
+                        builder.Add(compound, shape)
                     combined = cq.Workplane("XY").newObject([compound])
                 else:
                     combined = positioned_chars[0]

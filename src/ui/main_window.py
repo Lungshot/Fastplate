@@ -6,7 +6,7 @@ The main application window for Fastplate.
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTabWidget, QMenuBar, QMenu, QAction, QFileDialog, QMessageBox,
-    QStatusBar, QLabel, QProgressBar, QInputDialog
+    QStatusBar, QLabel, QProgressBar, QInputDialog, QPushButton, QApplication
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QKeySequence
@@ -21,6 +21,7 @@ from ui.panels.svg_panel import SVGPanel
 from fonts.font_manager import get_font_manager
 from core.nameplate import NameplateBuilder, NameplateConfig
 from core.export.exporter import ExportFormat
+from utils.debug_log import debug_log
 
 
 class MainWindow(QMainWindow):
@@ -38,12 +39,15 @@ class MainWindow(QMainWindow):
         self._update_timer = QTimer()
         self._update_timer.setSingleShot(True)
         self._update_timer.timeout.connect(self._do_update_preview)
-        
+
+        # Flag to auto-fit view on first load
+        self._should_auto_fit = True
+
         self._setup_ui()
         self._setup_menus()
         self._connect_signals()
         self._load_fonts()
-        
+
         # Initial preview
         QTimer.singleShot(500, self._update_preview)
     
@@ -115,10 +119,21 @@ class MainWindow(QMainWindow):
         # Status bar
         self._status_bar = QStatusBar()
         self.setStatusBar(self._status_bar)
-        
+
         self._status_label = QLabel("Ready")
-        self._status_bar.addWidget(self._status_label)
-        
+        self._status_label.setStyleSheet("QLabel { padding-right: 5px; }")
+        self._status_bar.addWidget(self._status_label, 1)  # Stretch factor 1
+
+        # Copy error button (hidden by default)
+        self._copy_error_btn = QPushButton("📋 Copy")
+        self._copy_error_btn.setFixedWidth(70)
+        self._copy_error_btn.setToolTip("Copy error message to clipboard")
+        self._copy_error_btn.clicked.connect(self._copy_error_to_clipboard)
+        self._copy_error_btn.setVisible(False)
+        self._status_bar.addWidget(self._copy_error_btn)
+
+        self._last_error_text = ""  # Store full error for copying
+
         self._progress = QProgressBar()
         self._progress.setMaximumWidth(200)
         self._progress.setVisible(False)
@@ -174,12 +189,31 @@ class MainWindow(QMainWindow):
         
         # Presets menu
         presets_menu = menubar.addMenu("&Presets")
-        
+
         save_preset = QAction("&Save Current as Preset...", self)
         save_preset.setShortcut(QKeySequence("Ctrl+Shift+S"))
         save_preset.triggered.connect(self._on_save_preset)
         presets_menu.addAction(save_preset)
-        
+
+        # Debug menu
+        debug_menu = menubar.addMenu("&Debug")
+
+        self._debug_logging_action = QAction("Enable &Debug Logging", self)
+        self._debug_logging_action.setCheckable(True)
+        self._debug_logging_action.setChecked(debug_log.enabled)
+        self._debug_logging_action.triggered.connect(self._on_toggle_debug_logging)
+        debug_menu.addAction(self._debug_logging_action)
+
+        open_log_action = QAction("&Open Log File Location...", self)
+        open_log_action.triggered.connect(self._on_open_log_location)
+        debug_menu.addAction(open_log_action)
+
+        debug_menu.addSeparator()
+
+        dump_config_action = QAction("Dump Current &Config to Log", self)
+        dump_config_action.triggered.connect(self._on_dump_config)
+        debug_menu.addAction(dump_config_action)
+
         # Help menu
         help_menu = menubar.addMenu("&Help")
         
@@ -212,7 +246,7 @@ class MainWindow(QMainWindow):
             self._text_panel.set_fonts(font_names)
             self._status_label.setText(f"Loaded {len(font_names)} fonts")
         except Exception as e:
-            self._status_label.setText(f"Error loading fonts: {e}")
+            self._set_status(f"Error loading fonts: {e}", is_error=True)
     
     def _schedule_update(self):
         """Schedule a debounced preview update."""
@@ -256,15 +290,18 @@ class MainWindow(QMainWindow):
                             plate_thickness = config.plate.thickness
                         text_geom = text_geom.translate((0, 0, plate_thickness))
 
-                    self._preview_manager.update_preview_separate(base_geom, text_geom)
+                    self._preview_manager.update_preview_separate(base_geom, text_geom, auto_fit=self._should_auto_fit)
                 else:
                     # For engraved/cutout or text-only, use combined geometry
-                    self._preview_manager.update_preview(geometry)
+                    self._preview_manager.update_preview(geometry, auto_fit=self._should_auto_fit)
 
-            self._status_label.setText("Ready")
+                # After first load, don't auto-fit anymore
+                self._should_auto_fit = False
+
+            self._set_status("Ready")
 
         except Exception as e:
-            self._status_label.setText(f"Error: {e}")
+            self._set_status(f"Error: {e}", is_error=True)
             print(f"Preview error: {e}")
 
         finally:
@@ -291,6 +328,7 @@ class MainWindow(QMainWindow):
                         font_style=seg_data.get('font_style', 'Regular'),
                         font_size=seg_data.get('font_size', 12.0),
                         letter_spacing=seg_data.get('letter_spacing', 0.0),
+                        vertical_offset=seg_data.get('vertical_offset', 0.0),
                         is_icon=seg_data.get('is_icon', False),
                     )
                     # Get font path for this segment
@@ -417,7 +455,31 @@ class MainWindow(QMainWindow):
 
         if 'svg_elements' in data:
             self._svg_panel.set_config({'elements': data['svg_elements']})
-    
+
+    def _set_status(self, message: str, is_error: bool = False):
+        """Set status bar message, tracking errors for copy button."""
+        self._status_label.setText(message)
+        if is_error:
+            self._last_error_text = message
+            self._status_label.setStyleSheet("QLabel { color: #ff6666; padding-right: 5px; }")
+            self._copy_error_btn.setVisible(True)
+        else:
+            self._last_error_text = ""
+            self._status_label.setStyleSheet("QLabel { padding-right: 5px; }")
+            self._copy_error_btn.setVisible(False)
+
+    def _copy_error_to_clipboard(self):
+        """Copy the last error message to clipboard."""
+        # Get the actual text from the status label as fallback
+        error_text = self._last_error_text or self._status_label.text()
+        if error_text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(error_text)
+            # Briefly show confirmation
+            original_text = error_text
+            self._status_label.setText("Error copied to clipboard!")
+            QTimer.singleShot(1500, lambda: self._status_label.setText(original_text))
+
     def _on_new(self):
         """Handle File > New."""
         reply = QMessageBox.question(
@@ -461,16 +523,16 @@ class MainWindow(QMainWindow):
         )
         
         if filepath:
-            self._status_label.setText("Exporting...")
+            self._set_status("Exporting...")
             try:
                 if self._nameplate_builder.export(filepath):
-                    self._status_label.setText(f"Exported to {filepath}")
+                    self._set_status(f"Exported to {filepath}")
                     QMessageBox.information(self, "Export Complete", f"Saved to:\n{filepath}")
                 else:
-                    self._status_label.setText("Export failed")
+                    self._set_status("Export failed", is_error=True)
                     QMessageBox.warning(self, "Export Failed", "Could not export the file.")
             except Exception as e:
-                self._status_label.setText(f"Export error: {e}")
+                self._set_status(f"Export error: {e}", is_error=True)
                 QMessageBox.warning(self, "Export Error", str(e))
     
     def _on_export_separate(self):
@@ -492,6 +554,7 @@ class MainWindow(QMainWindow):
     def _on_preset_selected(self, data: dict):
         """Handle preset selection."""
         self._apply_config(data)
+        self._should_auto_fit = True  # Auto-fit when loading preset
         self._update_preview()
     
     def _on_save_preset(self):
@@ -541,3 +604,69 @@ class MainWindow(QMainWindow):
                     f"Could not import the Google icon '{name}'.\n"
                     "The icon may not contain valid path data."
                 )
+
+    def _on_toggle_debug_logging(self, checked: bool):
+        """Toggle debug logging on/off."""
+        if checked:
+            debug_log.enable()
+            self._debug_logging_action.setText("Disable &Debug Logging")
+            log_path = debug_log.log_file_path
+            self._set_status(f"Debug logging enabled: {log_path}")
+            debug_log.info("Debug logging started from menu")
+            # Log current state
+            self._on_dump_config()
+        else:
+            debug_log.info("Debug logging stopped from menu")
+            debug_log.disable()
+            self._debug_logging_action.setText("Enable &Debug Logging")
+            self._set_status("Debug logging disabled")
+
+    def _on_open_log_location(self):
+        """Open the folder containing log files."""
+        import os
+        import subprocess
+
+        log_path = debug_log.log_file_path
+        if log_path and log_path.exists():
+            # Open the folder containing the log file
+            folder = str(log_path.parent)
+            subprocess.run(['explorer', folder])
+        else:
+            # Open the default log location
+            import sys
+            if getattr(sys, 'frozen', False):
+                folder = os.path.expanduser('~/Documents/Fastplate')
+            else:
+                folder = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'logs')
+
+            if os.path.exists(folder):
+                subprocess.run(['explorer', folder])
+            else:
+                QMessageBox.information(
+                    self, "Log Location",
+                    f"No log files yet.\n\nLogs will be saved to:\n{folder}\n\nEnable debug logging first."
+                )
+
+    def _on_dump_config(self):
+        """Dump current configuration to the debug log."""
+        if not debug_log.enabled:
+            QMessageBox.information(
+                self, "Debug Logging",
+                "Please enable debug logging first from the Debug menu."
+            )
+            return
+
+        try:
+            config = self._build_config()
+            config_dict = config.to_dict()
+
+            debug_log.info("=== CURRENT CONFIGURATION DUMP ===")
+            import json
+            formatted = json.dumps(config_dict, indent=2, default=str)
+            for line in formatted.split('\n'):
+                debug_log.info(line)
+            debug_log.info("=== END CONFIGURATION DUMP ===")
+
+            self._set_status("Configuration dumped to log file")
+        except Exception as e:
+            debug_log.exception(f"Error dumping config: {e}")

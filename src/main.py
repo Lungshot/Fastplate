@@ -13,15 +13,38 @@ if str(src_path) not in sys.path:
 
 def main():
     """Main application entry point."""
-    from PyQt5.QtWidgets import QApplication
+    from PyQt5.QtWidgets import QApplication, QSplashScreen
     from PyQt5.QtCore import Qt
-    from PyQt5.QtGui import QFont
-    
+    from PyQt5.QtGui import QFont, QPixmap, QPainter, QColor, QFontDatabase
+
     # Enable high DPI scaling
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    
+
     app = QApplication(sys.argv)
+
+    # Create splash screen
+    splash_pixmap = QPixmap(400, 200)
+    splash_pixmap.fill(QColor(35, 35, 35))
+
+    painter = QPainter(splash_pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.TextAntialiasing)
+
+    # Draw border
+    painter.setPen(QColor(42, 130, 218))
+    painter.drawRect(0, 0, 399, 199)
+
+    # Draw "Fastplate" text
+    font = QFont("Arial", 48, QFont.Bold)
+    painter.setFont(font)
+    painter.setPen(QColor(42, 130, 218))
+    painter.drawText(splash_pixmap.rect(), Qt.AlignCenter, "Fastplate")
+    painter.end()
+
+    splash = QSplashScreen(splash_pixmap, Qt.WindowStaysOnTopHint)
+    splash.show()
+    app.processEvents()
     
     # Set application info
     app.setApplicationName("Fastplate")
@@ -144,7 +167,10 @@ def main():
     from ui.main_window import MainWindow
     window = MainWindow()
     window.show()
-    
+
+    # Close splash screen
+    splash.finish(window)
+
     return app.exec_()
 
 

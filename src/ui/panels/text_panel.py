@@ -21,48 +21,111 @@ class TextSegmentWidget(QFrame):
     move_up_requested = pyqtSignal(object)
     move_down_requested = pyqtSignal(object)
 
+    # Stylesheet for the segment widget with improved visibility
+    SEGMENT_STYLE = """
+        TextSegmentWidget {
+            background-color: #4a4a4a;
+            border: 1px solid #666;
+            border-radius: 4px;
+            margin: 2px;
+        }
+        QLabel {
+            color: #ddd;
+        }
+        QLineEdit {
+            background-color: #555;
+            border: 1px solid #777;
+            border-radius: 3px;
+            padding: 3px;
+            color: #fff;
+        }
+        QComboBox {
+            background-color: #5a5a5a;
+            border: 1px solid #888;
+            border-radius: 3px;
+            padding: 3px;
+            color: #fff;
+        }
+        QComboBox:hover {
+            background-color: #656565;
+            border: 1px solid #999;
+        }
+        QComboBox::drop-down {
+            border: none;
+        }
+        QToolButton {
+            background-color: #555;
+            border: 1px solid #666;
+            border-radius: 3px;
+            color: #ccc;
+        }
+        QToolButton:hover {
+            background-color: #666;
+            border: 1px solid #888;
+        }
+        QSlider::groove:horizontal {
+            background: #555;
+            height: 6px;
+            border-radius: 3px;
+        }
+        QSlider::handle:horizontal {
+            background: #888;
+            width: 14px;
+            margin: -4px 0;
+            border-radius: 7px;
+            border: 1px solid #999;
+        }
+        QSlider::handle:horizontal:hover {
+            background: #aaa;
+        }
+        QSlider::sub-page:horizontal {
+            background: #6a8fbd;
+            border-radius: 3px;
+        }
+    """
+
     def __init__(self, segment_number: int = 1, parent=None):
         super().__init__(parent)
         self.segment_number = segment_number
         self.is_icon = False  # Track if this segment is a Nerd Font icon
 
         self.setFrameStyle(QFrame.Box)
-        self.setStyleSheet("QFrame { background-color: #404040; border: 1px solid #555; border-radius: 3px; margin: 2px; }")
+        self.setStyleSheet(self.SEGMENT_STYLE)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(3)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
 
         # Header with segment label and control buttons
         header = QHBoxLayout()
-        header.setSpacing(2)
+        header.setSpacing(3)
 
         self._label = QLabel(f"Seg {segment_number}")
-        self._label.setStyleSheet("font-size: 10px; color: #aaa;")
+        self._label.setStyleSheet("font-size: 10px; font-weight: bold; color: #bbb;")
         header.addWidget(self._label)
         header.addStretch()
 
         # Move up button
         self._up_btn = QToolButton()
-        self._up_btn.setText("▲")
-        self._up_btn.setFixedSize(18, 18)
+        self._up_btn.setText("◀")
+        self._up_btn.setFixedSize(20, 20)
         self._up_btn.setToolTip("Move segment left")
         self._up_btn.clicked.connect(lambda: self.move_up_requested.emit(self))
         header.addWidget(self._up_btn)
 
         # Move down button
         self._down_btn = QToolButton()
-        self._down_btn.setText("▼")
-        self._down_btn.setFixedSize(18, 18)
+        self._down_btn.setText("▶")
+        self._down_btn.setFixedSize(20, 20)
         self._down_btn.setToolTip("Move segment right")
         self._down_btn.clicked.connect(lambda: self.move_down_requested.emit(self))
         header.addWidget(self._down_btn)
 
         # Remove button
         self._remove_btn = QToolButton()
-        self._remove_btn.setText("×")
-        self._remove_btn.setFixedSize(18, 18)
-        self._remove_btn.setStyleSheet("QToolButton { font-weight: bold; color: #ff6666; }")
+        self._remove_btn.setText("✕")
+        self._remove_btn.setFixedSize(20, 20)
+        self._remove_btn.setStyleSheet("QToolButton { font-weight: bold; color: #ff6666; } QToolButton:hover { color: #ff8888; background-color: #553333; }")
         self._remove_btn.setToolTip("Remove segment")
         self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self))
         header.addWidget(self._remove_btn)
@@ -77,7 +140,7 @@ class TextSegmentWidget(QFrame):
 
         # Font selection row
         font_row = QHBoxLayout()
-        font_row.setSpacing(3)
+        font_row.setSpacing(4)
 
         self._font_combo = FocusComboBox()
         self._font_combo.setMinimumWidth(100)
@@ -87,7 +150,7 @@ class TextSegmentWidget(QFrame):
 
         self._style_combo = FocusComboBox()
         self._style_combo.addItems(["Regular", "Bold", "Italic", "Bold Italic"])
-        self._style_combo.setFixedWidth(80)
+        self._style_combo.setFixedWidth(85)
         self._style_combo.currentTextChanged.connect(self._on_changed)
         font_row.addWidget(self._style_combo)
 
@@ -95,23 +158,38 @@ class TextSegmentWidget(QFrame):
 
         # Size and spacing row
         size_row = QHBoxLayout()
-        size_row.setSpacing(3)
+        size_row.setSpacing(4)
 
-        size_row.addWidget(QLabel("Size:"))
+        size_label = QLabel("Size:")
+        size_label.setStyleSheet("font-weight: bold;")
+        size_row.addWidget(size_label)
         self._size_slider = SliderSpinBox("", 4, 50, 12, decimals=1, suffix="mm")
         self._size_slider.valueChanged.connect(self._on_changed)
         size_row.addWidget(self._size_slider)
 
         layout.addLayout(size_row)
 
-        # Letter spacing (collapsed by default, shown on expand)
+        # Letter spacing
         spacing_row = QHBoxLayout()
-        spacing_row.setSpacing(3)
-        spacing_row.addWidget(QLabel("Spacing:"))
+        spacing_row.setSpacing(4)
+        spacing_label = QLabel("Spacing:")
+        spacing_label.setStyleSheet("font-weight: bold;")
+        spacing_row.addWidget(spacing_label)
         self._spacing_slider = SliderSpinBox("", -50, 100, 0, decimals=0, suffix="%")
         self._spacing_slider.valueChanged.connect(self._on_changed)
         spacing_row.addWidget(self._spacing_slider)
         layout.addLayout(spacing_row)
+
+        # Vertical offset
+        voffset_row = QHBoxLayout()
+        voffset_row.setSpacing(4)
+        voffset_label = QLabel("V-Offset:")
+        voffset_label.setStyleSheet("font-weight: bold;")
+        voffset_row.addWidget(voffset_label)
+        self._voffset_slider = SliderSpinBox("", -10, 10, 0, decimals=1, suffix="mm")
+        self._voffset_slider.valueChanged.connect(self._on_changed)
+        voffset_row.addWidget(self._voffset_slider)
+        layout.addLayout(voffset_row)
 
     def _on_changed(self, *args):
         self.changed.emit()
@@ -137,6 +215,7 @@ class TextSegmentWidget(QFrame):
             'font_style': self._style_combo.currentText(),
             'font_size': self._size_slider.value(),
             'letter_spacing': self._spacing_slider.value(),
+            'vertical_offset': self._voffset_slider.value(),
             'is_icon': self.is_icon,
         }
 
@@ -151,6 +230,8 @@ class TextSegmentWidget(QFrame):
             self._size_slider.setValue(config['font_size'])
         if 'letter_spacing' in config:
             self._spacing_slider.setValue(config['letter_spacing'])
+        if 'vertical_offset' in config:
+            self._voffset_slider.setValue(config['vertical_offset'])
         self.is_icon = config.get('is_icon', False)
 
 
@@ -197,7 +278,24 @@ class TextLineWidget(QFrame):
         controls_row = QHBoxLayout()
 
         add_seg_btn = QPushButton("+ Add Segment")
-        add_seg_btn.setFixedWidth(100)
+        add_seg_btn.setFixedWidth(110)
+        add_seg_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a7a9a;
+                border: 1px solid #5a8aaa;
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: #ffffff;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #5a8aaa;
+                border: 1px solid #6a9aba;
+            }
+            QPushButton:pressed {
+                background-color: #3a6a8a;
+            }
+        """)
         add_seg_btn.clicked.connect(self._add_segment)
         controls_row.addWidget(add_seg_btn)
 

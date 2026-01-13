@@ -88,7 +88,7 @@ class Viewer3DWidget(QWidget):
         self._mesh_item = None
         self._text_mesh_item = None
         self._grid_item = None
-        self._current_color = self.MESH_COLORS['Light Grey']  # Default color
+        self._current_color = self.MESH_COLORS['Light Blue']  # Default color
         self._current_shader = 'edgeHilight'  # Edge Highlight shader
         self._wireframe_mode = False
         self._show_edges = False
@@ -181,7 +181,7 @@ class Viewer3DWidget(QWidget):
         btn_layout.addWidget(QLabel("Color:"))
         self._color_combo = FocusComboBox()
         self._color_combo.addItems(list(self.MESH_COLORS.keys()))
-        self._color_combo.setCurrentText('Light Grey')  # Default
+        self._color_combo.setCurrentText('Light Blue')  # Default
         self._color_combo.currentTextChanged.connect(self._on_color_changed)
         self._color_combo.setMinimumWidth(90)
         btn_layout.addWidget(self._color_combo)
@@ -584,22 +584,23 @@ class PreviewManager:
         self._pending_update = False
         self._update_timer = None
 
-    def update_preview(self, geometry, immediate: bool = False):
+    def update_preview(self, geometry, immediate: bool = False, auto_fit: bool = False):
         """
         Update the preview with new geometry.
 
         Args:
             geometry: CadQuery geometry to display
             immediate: If True, update immediately. Otherwise, debounce.
+            auto_fit: If True, fit view to model. Default False to preserve camera.
         """
         if immediate:
-            self.viewer.set_geometry(geometry)
+            self.viewer.set_geometry(geometry, auto_fit=auto_fit)
         else:
             # Debounced update would go here
             # For now, just update immediately
-            self.viewer.set_geometry(geometry)
+            self.viewer.set_geometry(geometry, auto_fit=auto_fit)
 
-    def update_preview_separate(self, base_geometry, text_geometry, immediate: bool = False):
+    def update_preview_separate(self, base_geometry, text_geometry, immediate: bool = False, auto_fit: bool = False):
         """
         Update the preview with separate base and text geometries (different colors).
 
@@ -607,12 +608,13 @@ class PreviewManager:
             base_geometry: CadQuery geometry for base plate
             text_geometry: CadQuery geometry for text
             immediate: If True, update immediately. Otherwise, debounce.
+            auto_fit: If True, fit view to model. Default False to preserve camera.
         """
         if immediate:
-            self.viewer.set_geometries(base_geometry, text_geometry)
+            self.viewer.set_geometries(base_geometry, text_geometry, auto_fit=auto_fit)
         else:
             # For now, just update immediately
-            self.viewer.set_geometries(base_geometry, text_geometry)
+            self.viewer.set_geometries(base_geometry, text_geometry, auto_fit=auto_fit)
 
     def clear_preview(self):
         """Clear the preview."""
