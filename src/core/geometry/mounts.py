@@ -182,7 +182,8 @@ class MountGenerator:
         
         # Rotate and position
         # Stand should be at the back of the plate
-        stand = stand.translate((0, -plate_height/2, 0))
+        # Add 0.1mm overlap for reliable union with raised text
+        stand = stand.translate((0, -plate_height/2 + 0.1, 0))
         
         return stand
     

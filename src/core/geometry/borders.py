@@ -113,11 +113,11 @@ class BorderGenerator:
             except:
                 pass
         
-        # Position on top of plate
-        border = border.translate((0, 0, plate_thickness))
-        
+        # Position on top of plate with 0.1mm overlap for reliable union with raised text
+        border = border.translate((0, 0, plate_thickness - 0.1))
+
         return border
-    
+
     def _make_inset_border(self, plate_width: float, plate_height: float,
                            plate_thickness: float, cfg: BorderConfig) -> cq.Workplane:
         """Create an inset (recessed) border groove."""
@@ -182,10 +182,10 @@ class BorderGenerator:
         
         # Combine frames
         combined = outer_frame.union(inner_frame)
-        
-        # Position on plate
-        combined = combined.translate((0, 0, plate_thickness))
-        
+
+        # Position on plate with 0.1mm overlap for reliable union with raised text
+        combined = combined.translate((0, 0, plate_thickness - 0.1))
+
         return combined
     
     def _make_groove_border(self, plate_width: float, plate_height: float,

@@ -404,8 +404,8 @@ class NameplateBuilder:
                 text_y = 0
 
             if cfg.text.style == TextStyle.RAISED:
-                # Position text on plate surface and union
-                text_positioned = self._text_geometry.translate((0, text_y, text_z))
+                # Position text on plate surface with 0.1mm overlap for reliable union
+                text_positioned = self._text_geometry.translate((0, text_y, text_z - 0.1))
                 # Handle compounds (from multi-segment text) by extracting solids
                 try:
                     text_val = text_positioned.val()
