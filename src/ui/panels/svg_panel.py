@@ -12,6 +12,116 @@ from PyQt5.QtCore import pyqtSignal, Qt
 
 from ui.widgets.slider_spin import SliderSpinBox, ResetableComboBox
 from core.geometry.svg_importer import SVGImporter, SVGElement
+from core.geometry.qr_generator import QRCodeGenerator, QRConfig, QRStyle
+
+
+class QRElementWidget(QFrame):
+    """Widget for configuring a QR code element."""
+
+    changed = pyqtSignal()
+    remove_requested = pyqtSignal(object)
+
+    def __init__(self, config: dict, parent=None):
+        super().__init__(parent)
+        self._config = config
+        self._qr_generator = QRCodeGenerator()
+
+        self.setFrameStyle(QFrame.StyledPanel)
+        self.setStyleSheet("QFrame { background-color: #353535; border-radius: 5px; }")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(5)
+
+        # Header
+        header = QHBoxLayout()
+        data_preview = config.get('data', '')[:30]
+        if len(config.get('data', '')) > 30:
+            data_preview += '...'
+        self._name_label = QLabel(f"QR: {data_preview}")
+        self._name_label.setStyleSheet("font-weight: bold;")
+        header.addWidget(self._name_label)
+        header.addStretch()
+
+        self._remove_btn = QPushButton("×")
+        self._remove_btn.setFixedSize(20, 20)
+        self._remove_btn.setStyleSheet("QPushButton { font-weight: bold; }")
+        self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self))
+        header.addWidget(self._remove_btn)
+        layout.addLayout(header)
+
+        # Size
+        self._size_slider = SliderSpinBox("Size:", 5, 100, config.get('size', 20), decimals=1, suffix=" mm")
+        self._size_slider.valueChanged.connect(self._on_changed)
+        layout.addWidget(self._size_slider)
+
+        # Position X
+        self._pos_x_slider = SliderSpinBox("Position X:", -100, 100, config.get('position_x', 0), decimals=1, suffix=" mm")
+        self._pos_x_slider.valueChanged.connect(self._on_changed)
+        layout.addWidget(self._pos_x_slider)
+
+        # Position Y
+        self._pos_y_slider = SliderSpinBox("Position Y:", -100, 100, config.get('position_y', 0), decimals=1, suffix=" mm")
+        self._pos_y_slider.valueChanged.connect(self._on_changed)
+        layout.addWidget(self._pos_y_slider)
+
+        # Depth
+        self._depth_slider = SliderSpinBox("Depth:", 0.5, 10, config.get('depth', 1), decimals=1, suffix=" mm")
+        self._depth_slider.valueChanged.connect(self._on_changed)
+        layout.addWidget(self._depth_slider)
+
+        # Style
+        style_row = QHBoxLayout()
+        style_row.addWidget(QLabel("Style:"))
+        self._style_combo = ResetableComboBox(default_text="Raised")
+        self._style_combo.addItems(["Raised", "Engraved", "Cutout"])
+        style_map = {"raised": "Raised", "engraved": "Engraved", "cutout": "Cutout"}
+        self._style_combo.setCurrentText(style_map.get(config.get('style', 'raised'), 'Raised'))
+        self._style_combo.currentTextChanged.connect(self._on_changed)
+        style_row.addWidget(self._style_combo, stretch=1)
+        layout.addLayout(style_row)
+
+    def _on_changed(self, *args):
+        self.changed.emit()
+
+    def get_qr_config(self) -> QRConfig:
+        """Get QRConfig object for geometry generation."""
+        style_map = {"Raised": QRStyle.RAISED, "Engraved": QRStyle.ENGRAVED, "Cutout": QRStyle.CUTOUT}
+        return QRConfig(
+            data=self._config.get('data', ''),
+            size=self._size_slider.value(),
+            depth=self._depth_slider.value(),
+            style=style_map.get(self._style_combo.currentText(), QRStyle.RAISED),
+            position_x=self._pos_x_slider.value(),
+            position_y=self._pos_y_slider.value(),
+            error_correction=self._config.get('error_correction', 'M'),
+        )
+
+    def get_config(self) -> dict:
+        """Get configuration for presets."""
+        return {
+            'type': 'qr',
+            'data': self._config.get('data', ''),
+            'size': self._size_slider.value(),
+            'depth': self._depth_slider.value(),
+            'style': self._style_combo.currentText().lower(),
+            'position_x': self._pos_x_slider.value(),
+            'position_y': self._pos_y_slider.value(),
+            'error_correction': self._config.get('error_correction', 'M'),
+        }
+
+    def set_config(self, config: dict):
+        """Set configuration from presets."""
+        if 'size' in config:
+            self._size_slider.setValue(config['size'])
+        if 'depth' in config:
+            self._depth_slider.setValue(config['depth'])
+        if 'position_x' in config:
+            self._pos_x_slider.setValue(config['position_x'])
+        if 'position_y' in config:
+            self._pos_y_slider.setValue(config['position_y'])
+        style_map = {"raised": "Raised", "engraved": "Engraved", "cutout": "Cutout"}
+        if 'style' in config:
+            self._style_combo.setCurrentText(style_map.get(config['style'], 'Raised'))
 
 
 class SVGElementWidget(QFrame):
@@ -144,7 +254,9 @@ class SVGPanel(QWidget):
         super().__init__(parent)
 
         self._svg_widgets = []
+        self._qr_widgets = []
         self._importer = SVGImporter()
+        self._qr_generator = QRCodeGenerator()
 
         self._setup_ui()
 
@@ -153,14 +265,18 @@ class SVGPanel(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
 
         # Import section
-        import_group = QGroupBox("Import SVG")
+        import_group = QGroupBox("Import Graphics")
         import_layout = QVBoxLayout(import_group)
 
         import_btn = QPushButton("Import SVG File...")
         import_btn.clicked.connect(self._import_svg)
         import_layout.addWidget(import_btn)
 
-        info_label = QLabel("Supports SVG paths, rectangles,\ncircles, ellipses, and polygons.")
+        qr_btn = QPushButton("Add QR Code...")
+        qr_btn.clicked.connect(self._add_qr_code)
+        import_layout.addWidget(qr_btn)
+
+        info_label = QLabel("SVG: paths, shapes, polygons\nQR: URLs, text, contact info")
         info_label.setStyleSheet("color: #888; font-size: 10px;")
         import_layout.addWidget(info_label)
 
@@ -212,6 +328,39 @@ class SVGPanel(QWidget):
                     "Could not import the SVG file. Make sure it contains valid path data."
                 )
 
+    def _add_qr_code(self):
+        """Open QR code dialog and add QR element."""
+        from ui.dialogs.qr_code_dialog import QRCodeDialog
+
+        dialog = QRCodeDialog(self)
+        if dialog.exec_() == QRCodeDialog.Accepted:
+            config = dialog.get_config()
+            if config.get('data'):
+                self._add_qr_widget(config)
+                self._on_changed()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "No Data",
+                    "Please enter data to encode in the QR code."
+                )
+
+    def _add_qr_widget(self, config: dict):
+        """Add a widget for a QR code element."""
+        widget = QRElementWidget(config)
+        widget.changed.connect(self._on_changed)
+        widget.remove_requested.connect(self._remove_qr_element)
+
+        self._qr_widgets.append(widget)
+        self._elements_layout.addWidget(widget)
+
+    def _remove_qr_element(self, widget):
+        """Remove a QR code element widget."""
+        self._qr_widgets.remove(widget)
+        self._elements_layout.removeWidget(widget)
+        widget.deleteLater()
+        self._on_changed()
+
     def add_svg_from_content(self, svg_content: str, name: str, target_size: float = None) -> bool:
         """
         Add an SVG element from SVG content string.
@@ -252,9 +401,13 @@ class SVGPanel(QWidget):
         self._on_changed()
 
     def _clear_all(self):
-        """Remove all SVG elements."""
+        """Remove all SVG and QR elements."""
         while self._svg_widgets:
             widget = self._svg_widgets.pop()
+            self._elements_layout.removeWidget(widget)
+            widget.deleteLater()
+        while self._qr_widgets:
+            widget = self._qr_widgets.pop()
             self._elements_layout.removeWidget(widget)
             widget.deleteLater()
         self._on_changed()
@@ -266,14 +419,20 @@ class SVGPanel(QWidget):
         """Get all configured SVG elements."""
         return [w.get_element() for w in self._svg_widgets]
 
+    def get_qr_elements(self) -> list:
+        """Get all configured QR code elements."""
+        return [w.get_qr_config() for w in self._qr_widgets]
+
     def get_config(self) -> dict:
-        """Get SVG configuration for presets."""
+        """Get SVG/QR configuration for presets."""
+        elements = [w.get_config() for w in self._svg_widgets]
+        qr_elements = [w.get_config() for w in self._qr_widgets]
         return {
-            'elements': [w.get_config() for w in self._svg_widgets]
+            'elements': elements + qr_elements
         }
 
     def set_config(self, config: dict):
-        """Set SVG configuration from presets."""
+        """Set SVG/QR configuration from presets."""
         self.blockSignals(True)
 
         try:
@@ -282,22 +441,32 @@ class SVGPanel(QWidget):
 
             # Recreate elements from config
             for elem_config in config.get('elements', []):
-                # Create SVGElement from config
-                element = SVGElement(
-                    name=elem_config.get('name', 'SVG Element'),
-                    paths=elem_config.get('paths', []),
-                    viewbox=tuple(elem_config.get('viewbox', (0, 0, 100, 100))),
-                    width=elem_config.get('width', 0),
-                    height=elem_config.get('height', 0),
-                )
+                if elem_config.get('type') == 'qr':
+                    # QR code element
+                    widget = QRElementWidget(elem_config)
+                    widget.set_config(elem_config)
+                    widget.changed.connect(self._on_changed)
+                    widget.remove_requested.connect(self._remove_qr_element)
 
-                widget = SVGElementWidget(element)
-                widget.set_config(elem_config)
-                widget.changed.connect(self._on_changed)
-                widget.remove_requested.connect(self._remove_element)
+                    self._qr_widgets.append(widget)
+                    self._elements_layout.addWidget(widget)
+                else:
+                    # SVG element
+                    element = SVGElement(
+                        name=elem_config.get('name', 'SVG Element'),
+                        paths=elem_config.get('paths', []),
+                        viewbox=tuple(elem_config.get('viewbox', (0, 0, 100, 100))),
+                        width=elem_config.get('width', 0),
+                        height=elem_config.get('height', 0),
+                    )
 
-                self._svg_widgets.append(widget)
-                self._elements_layout.addWidget(widget)
+                    widget = SVGElementWidget(element)
+                    widget.set_config(elem_config)
+                    widget.changed.connect(self._on_changed)
+                    widget.remove_requested.connect(self._remove_element)
+
+                    self._svg_widgets.append(widget)
+                    self._elements_layout.addWidget(widget)
         finally:
             self.blockSignals(False)
 

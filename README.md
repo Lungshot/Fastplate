@@ -9,7 +9,9 @@ A Windows application for creating customizable 3D-printable nameplates, door si
 - **Multiple Plate Shapes**: Rectangle, rounded, oval, hexagon, octagon, sweeping curves
 - **Text Styles**: Raised, engraved (debossed), or cutout text
 - **Mounting Options**: Desk stands, screw holes, keyholes, magnet pockets, hanging holes
-- **Live 3D Preview**: See your design in real-time
+- **Live 3D Preview**: See your design in real-time with responsive UI
+- **Background Processing**: Geometry generation runs in background thread for smooth interaction
+- **Smart Caching**: Geometry cache avoids regenerating unchanged designs
 - **Preset System**: Built-in templates + save your own
 - **Export Formats**: STL, STEP, 3MF for 3D printing
 
@@ -94,6 +96,7 @@ Fastplate/
 │   ├── ui/                  # GUI components
 │   │   ├── main_window.py   # Main window
 │   │   ├── viewer_widget.py # 3D preview
+│   │   ├── preview_worker.py # Background geometry generation
 │   │   ├── panels/          # Settings panels
 │   │   └── dialogs/         # Pop-up dialogs
 │   ├── utils/               # Utility modules

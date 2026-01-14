@@ -418,7 +418,8 @@ class Viewer3DWidget(QWidget):
                 shape = geometry
             
             # Tessellate the shape
-            tess = shape.tessellate(0.1, 0.1)
+            # Use 0.2mm precision for faster preview (0.1 for final export)
+            tess = shape.tessellate(0.2, 0.2)
             
             vertices = np.array([(v.x, v.y, v.z) for v in tess[0]])
             faces = np.array(tess[1])

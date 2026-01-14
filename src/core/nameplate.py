@@ -14,6 +14,7 @@ from .geometry.borders import BorderGenerator, BorderConfig, BorderStyle
 from .geometry.mounts import MountGenerator, MountConfig, MountType
 from .geometry.sweeping import SweepingPlateGenerator, SweepingConfig
 from .geometry.svg_importer import SVGImporter, SVGElement
+from .geometry.qr_generator import QRCodeGenerator, QRConfig, QRStyle
 from .export.exporter import Exporter, ExportOptions, ExportFormat
 from utils.debug_log import debug_log
 
@@ -41,6 +42,9 @@ class NameplateConfig:
 
     # SVG elements
     svg_elements: List[SVGElement] = field(default_factory=list)
+
+    # QR code elements
+    qr_elements: List[QRConfig] = field(default_factory=list)
 
     # Metadata
     name: str = "Untitled"
@@ -254,6 +258,7 @@ class NameplateBuilder:
         self._border_gen = BorderGenerator()
         self._mount_gen = MountGenerator()
         self._svg_importer = SVGImporter()
+        self._qr_generator = QRCodeGenerator()
         self._exporter = Exporter()
         
         # Generated geometry cache
@@ -620,6 +625,44 @@ class NameplateBuilder:
                                 (0, 0, 0), (0, 0, 1), svg_elem.rotation
                             )
                         result = result.cut(svg_cutout)
+
+        # Add QR code elements
+        for qr_elem in cfg.qr_elements:
+            qr_geometry = self._qr_generator.create_geometry(qr_elem)
+            if qr_geometry is not None:
+                # Handle style (raised/engraved/cutout)
+                if qr_elem.style == QRStyle.RAISED:
+                    # Position on top of plate
+                    qr_final = qr_geometry.translate((0, 0, plate_thickness - 0.1))
+                    result = result.union(qr_final)
+                elif qr_elem.style == QRStyle.ENGRAVED:
+                    # Create deeper geometry to cut through raised elements
+                    qr_engrave_config = QRConfig(
+                        data=qr_elem.data,
+                        size=qr_elem.size,
+                        depth=qr_elem.depth + 10,
+                        position_x=qr_elem.position_x,
+                        position_y=qr_elem.position_y,
+                        error_correction=qr_elem.error_correction,
+                    )
+                    qr_engrave = self._qr_generator.create_geometry(qr_engrave_config)
+                    if qr_engrave is not None:
+                        qr_final = qr_engrave.translate((0, 0, plate_thickness - qr_elem.depth - 10 + 0.5))
+                        result = result.cut(qr_final)
+                elif qr_elem.style == QRStyle.CUTOUT:
+                    # Cut through entire plate
+                    qr_cutout_config = QRConfig(
+                        data=qr_elem.data,
+                        size=qr_elem.size,
+                        depth=plate_thickness + 10,
+                        position_x=qr_elem.position_x,
+                        position_y=qr_elem.position_y,
+                        error_correction=qr_elem.error_correction,
+                    )
+                    qr_cutout = self._qr_generator.create_geometry(qr_cutout_config)
+                    if qr_cutout is not None:
+                        qr_final = qr_cutout.translate((0, 0, -0.5))
+                        result = result.cut(qr_final)
 
         self._combined_geometry = result
         self._needs_rebuild = False

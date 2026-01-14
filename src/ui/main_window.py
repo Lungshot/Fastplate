@@ -17,11 +17,13 @@ from ui.panels.base_panel import BasePlatePanel
 from ui.panels.mount_panel import MountPanel
 from ui.panels.preset_panel import PresetPanel
 from ui.panels.svg_panel import SVGPanel
+from ui.preview_worker import PreviewWorker
 
 from fonts.font_manager import get_font_manager
 from core.nameplate import NameplateBuilder, NameplateConfig
 from core.export.exporter import ExportFormat
 from utils.debug_log import debug_log
+from ui.theme_manager import get_theme_manager
 
 
 class MainWindow(QMainWindow):
@@ -34,7 +36,11 @@ class MainWindow(QMainWindow):
         self._font_manager = get_font_manager()
         self._nameplate_builder = NameplateBuilder()
         self._preview_manager = None
-        
+        self._theme_manager = get_theme_manager()
+
+        # Project file tracking
+        self._current_project_path = None
+
         # Debounce timer for preview updates
         self._update_timer = QTimer()
         self._update_timer.setSingleShot(True)
@@ -42,6 +48,18 @@ class MainWindow(QMainWindow):
 
         # Flag to auto-fit view on first load
         self._should_auto_fit = True
+
+        # Background worker for geometry generation (prevents UI freezing)
+        self._preview_worker = PreviewWorker()
+        self._preview_worker.set_builder(self._nameplate_builder)
+        self._preview_worker.preview_ready.connect(self._on_preview_ready)
+        self._preview_worker.preview_error.connect(self._on_preview_error)
+        self._preview_worker.progress_update.connect(self._on_progress_update)
+        self._preview_worker.generation_started.connect(self._on_generation_started)
+        self._preview_worker.generation_finished.connect(self._on_generation_finished)
+
+        # Track if we're currently generating
+        self._is_generating = False
 
         self._setup_ui()
         self._setup_menus()
@@ -150,7 +168,22 @@ class MainWindow(QMainWindow):
         new_action.setShortcut(QKeySequence.New)
         new_action.triggered.connect(self._on_new)
         file_menu.addAction(new_action)
-        
+
+        open_action = QAction("&Open Project...", self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self._on_open_project)
+        file_menu.addAction(open_action)
+
+        save_action = QAction("&Save Project", self)
+        save_action.setShortcut(QKeySequence.Save)
+        save_action.triggered.connect(self._on_save_project)
+        file_menu.addAction(save_action)
+
+        save_as_action = QAction("Save Project &As...", self)
+        save_as_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        save_as_action.triggered.connect(self._on_save_project_as)
+        file_menu.addAction(save_as_action)
+
         file_menu.addSeparator()
         
         export_stl = QAction("Export &STL...", self)
@@ -171,9 +204,16 @@ class MainWindow(QMainWindow):
         export_separate = QAction("Export Separate Parts...", self)
         export_separate.triggered.connect(self._on_export_separate)
         file_menu.addAction(export_separate)
-        
+
         file_menu.addSeparator()
-        
+
+        batch_action = QAction("&Batch Generate...", self)
+        batch_action.setShortcut(QKeySequence("Ctrl+B"))
+        batch_action.triggered.connect(self._on_batch_generate)
+        file_menu.addAction(batch_action)
+
+        file_menu.addSeparator()
+
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.Quit)
         exit_action.triggered.connect(self.close)
@@ -194,6 +234,22 @@ class MainWindow(QMainWindow):
         save_preset.setShortcut(QKeySequence("Ctrl+Shift+S"))
         save_preset.triggered.connect(self._on_save_preset)
         presets_menu.addAction(save_preset)
+
+        # View menu
+        view_menu = menubar.addMenu("&View")
+
+        self._dark_mode_action = QAction("&Dark Mode", self)
+        self._dark_mode_action.setCheckable(True)
+        self._dark_mode_action.setChecked(self._theme_manager.is_dark_mode)
+        self._dark_mode_action.triggered.connect(self._on_toggle_dark_mode)
+        view_menu.addAction(self._dark_mode_action)
+
+        view_menu.addSeparator()
+
+        reset_view_action = QAction("&Reset 3D View", self)
+        reset_view_action.setShortcut(QKeySequence("Home"))
+        reset_view_action.triggered.connect(self._on_reset_view)
+        view_menu.addAction(reset_view_action)
 
         # Debug menu
         debug_menu = menubar.addMenu("&Debug")
@@ -253,7 +309,9 @@ class MainWindow(QMainWindow):
     
     def _schedule_update(self):
         """Schedule a debounced preview update."""
-        self._update_timer.start(300)  # 300ms debounce
+        # 500ms debounce - gives more time for rapid typing/slider movement
+        # before triggering expensive geometry rebuild
+        self._update_timer.start(500)
     
     def _update_preview(self):
         """Trigger immediate preview update."""
@@ -261,29 +319,44 @@ class MainWindow(QMainWindow):
         self._do_update_preview()
     
     def _do_update_preview(self):
-        """Actually perform the preview update."""
-        self._status_label.setText("Generating preview...")
+        """Actually perform the preview update using background worker."""
+        # Build config from UI (this is fast)
+        config = self._build_config()
+
+        # Store config for use in the callback
+        self._pending_config = config
+
+        # Request preview generation in background thread
+        self._preview_worker.request_preview(config)
+
+    def _on_generation_started(self):
+        """Called when background generation starts."""
+        self._is_generating = True
+        self._status_label.setText("Generating...")
         self._progress.setVisible(True)
         self._progress.setRange(0, 0)  # Indeterminate
 
+    def _on_generation_finished(self):
+        """Called when background generation finishes."""
+        self._is_generating = False
+        self._progress.setVisible(False)
+
+    def _on_progress_update(self, message: str):
+        """Called with progress updates from worker."""
+        self._status_label.setText(message)
+
+    def _on_preview_ready(self, geometry, base_geom, text_geom):
+        """Called when preview geometry is ready from background worker."""
         try:
-            # Build config from UI
-            config = self._build_config()
-            self._nameplate_builder.set_config(config)
-
-            # Generate geometry
-            geometry = self._nameplate_builder.build()
-
-            # Update viewer with separate geometries for different colors
             if self._preview_manager:
                 from core.geometry.text_builder import TextStyle
                 from core.geometry.base_plates import PlateShape
 
+                config = self._pending_config
+
                 # For raised text, render base and text separately with different colors
                 if (config.text.style == TextStyle.RAISED and
                     config.plate.shape != PlateShape.NONE):
-                    base_geom = self._nameplate_builder.get_base_geometry()
-                    text_geom = self._nameplate_builder.get_text_geometry()
 
                     # Position text on top of plate for raised style
                     if text_geom is not None:
@@ -305,10 +378,12 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             self._set_status(f"Error: {e}", is_error=True)
-            print(f"Preview error: {e}")
+            print(f"Preview display error: {e}")
 
-        finally:
-            self._progress.setVisible(False)
+    def _on_preview_error(self, error_message: str):
+        """Called when preview generation fails."""
+        self._set_status(f"Error: {error_message}", is_error=True)
+        print(f"Preview error: {error_message}")
     
     def _build_config(self) -> NameplateConfig:
         """Build NameplateConfig from current UI state."""
@@ -316,7 +391,7 @@ class MainWindow(QMainWindow):
         
         # Get text config
         text_cfg = self._text_panel.get_config()
-        from core.geometry.text_builder import TextLineConfig, TextSegment, TextStyle, TextAlign, TextOrientation
+        from core.geometry.text_builder import TextLineConfig, TextSegment, TextStyle, TextAlign, TextOrientation, TextEffect
 
         config.text.lines = []
         for line_data in text_cfg.get('lines', []):
@@ -364,7 +439,9 @@ class MainWindow(QMainWindow):
         config.text.depth = text_cfg.get('depth', 2.0)
         config.text.line_spacing = text_cfg.get('line_spacing', 1.2)
         config.text.orientation = TextOrientation(text_cfg.get('orientation', 'horizontal'))
-        
+        config.text.effect = TextEffect(text_cfg.get('effect', 'none'))
+        config.text.effect_size = text_cfg.get('effect_size', 0.3)
+
         # Get base plate config
         base_cfg = self._base_panel.get_config()
         from core.geometry.base_plates import PlateShape
@@ -442,6 +519,9 @@ class MainWindow(QMainWindow):
 
         # Get SVG elements
         config.svg_elements = self._svg_panel.get_elements()
+
+        # Get QR code elements
+        config.qr_elements = self._svg_panel.get_qr_elements()
 
         return config
     
@@ -539,21 +619,75 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Export Error", str(e))
     
     def _on_export_separate(self):
-        """Export base and text as separate files."""
+        """Export base and text as separate files for multi-color printing."""
+        from ui.dialogs.multicolor_export_dialog import MultiColorExportDialog
+
+        dialog = MultiColorExportDialog(self)
+        if dialog.exec_() != MultiColorExportDialog.Accepted:
+            return
+
+        config = dialog.get_config()
+        ext_map = {'stl': '*.stl', 'step': '*.step', '3mf': '*.3mf'}
+        ext = config['format']
+
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Separate Parts", "fastplate.stl", "STL Files (*.stl)"
+            self, "Export Multi-Color",
+            f"fastplate.{ext}",
+            f"{ext.upper()} Files ({ext_map[ext]})"
         )
-        
-        if filepath:
-            try:
-                if self._nameplate_builder.export_separate(filepath):
-                    QMessageBox.information(
-                        self, "Export Complete",
-                        f"Exported separate base and text files."
-                    )
-            except Exception as e:
-                QMessageBox.warning(self, "Export Error", str(e))
+
+        if not filepath:
+            return
+
+        try:
+            from pathlib import Path
+            path = Path(filepath)
+            stem = path.stem
+            suffix = path.suffix or f'.{ext}'
+            folder = path.parent
+
+            exported_files = []
+
+            # Export base
+            if config['export_base']:
+                base_path = folder / f"{stem}{config['base_suffix']}{suffix}"
+                base_geom = self._nameplate_builder.get_base_geometry()
+                if base_geom and self._nameplate_builder._exporter.export(base_geom, base_path):
+                    exported_files.append(str(base_path))
+
+            # Export text
+            if config['export_text']:
+                text_path = folder / f"{stem}{config['text_suffix']}{suffix}"
+                text_geom = self._nameplate_builder.get_text_geometry()
+                if text_geom and self._nameplate_builder._exporter.export(text_geom, text_path):
+                    exported_files.append(str(text_path))
+
+            # Export combined
+            if config['export_combined']:
+                combined_path = folder / f"{stem}{suffix}"
+                if self._nameplate_builder.export(str(combined_path)):
+                    exported_files.append(str(combined_path))
+
+            if exported_files:
+                files_list = '\n'.join(f'  • {f}' for f in exported_files)
+                QMessageBox.information(
+                    self, "Export Complete",
+                    f"Exported {len(exported_files)} file(s):\n{files_list}"
+                )
+                self._set_status(f"Exported {len(exported_files)} files")
+            else:
+                QMessageBox.warning(self, "Export Failed", "No files were exported.")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Export Error", str(e))
     
+    def _on_batch_generate(self):
+        """Open batch generation dialog."""
+        from ui.dialogs.batch_dialog import BatchDialog
+
+        dialog = BatchDialog(self._nameplate_builder, self)
+        dialog.exec_()
+
     def _on_preset_selected(self, data: dict):
         """Handle preset selection."""
         self._apply_config(data)
@@ -697,3 +831,107 @@ class MainWindow(QMainWindow):
             self._set_status("Configuration dumped to log file")
         except Exception as e:
             debug_log.exception(f"Error dumping config: {e}")
+
+    def _on_toggle_dark_mode(self, checked: bool):
+        """Toggle dark mode theme."""
+        self._theme_manager.set_dark_mode(checked)
+        mode = "Dark" if checked else "Light"
+        self._set_status(f"{mode} mode enabled")
+
+    def _on_reset_view(self):
+        """Reset the 3D viewer to default view."""
+        if self._viewer:
+            self._viewer.reset_view()
+            self._set_status("View reset")
+
+    def showEvent(self, event):
+        """Apply theme when window is shown."""
+        super().showEvent(event)
+        self._theme_manager.apply_theme()
+
+    def _on_open_project(self):
+        """Open a project file."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open Project", "",
+            "Fastplate Projects (*.fastplate);;All Files (*.*)"
+        )
+
+        if filepath:
+            try:
+                import json
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                # Validate it's a fastplate project
+                if data.get('format') != 'fastplate':
+                    QMessageBox.warning(
+                        self, "Invalid File",
+                        "This file is not a valid Fastplate project."
+                    )
+                    return
+
+                # Apply the configuration
+                self._apply_config(data)
+                self._current_project_path = filepath
+                self._update_window_title()
+                self._should_auto_fit = True
+                self._update_preview()
+                self._set_status(f"Opened: {filepath}")
+
+            except Exception as e:
+                QMessageBox.warning(
+                    self, "Open Error",
+                    f"Could not open project:\n{e}"
+                )
+
+    def _on_save_project(self):
+        """Save project to current path or prompt for new path."""
+        if self._current_project_path:
+            self._save_project_to_path(self._current_project_path)
+        else:
+            self._on_save_project_as()
+
+    def _on_save_project_as(self):
+        """Save project to a new file."""
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Save Project", "nameplate.fastplate",
+            "Fastplate Projects (*.fastplate)"
+        )
+
+        if filepath:
+            if not filepath.endswith('.fastplate'):
+                filepath += '.fastplate'
+            self._save_project_to_path(filepath)
+
+    def _save_project_to_path(self, filepath: str):
+        """Save project to the specified path."""
+        try:
+            import json
+            config = self._build_config()
+            data = config.to_dict()
+
+            # Add project metadata
+            data['format'] = 'fastplate'
+            data['version'] = '1.0'
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, default=str)
+
+            self._current_project_path = filepath
+            self._update_window_title()
+            self._set_status(f"Saved: {filepath}")
+
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Save Error",
+                f"Could not save project:\n{e}"
+            )
+
+    def _update_window_title(self):
+        """Update window title with current project name."""
+        if self._current_project_path:
+            from pathlib import Path
+            name = Path(self._current_project_path).stem
+            self.setWindowTitle(f"Fastplate - {name}")
+        else:
+            self.setWindowTitle("Fastplate")

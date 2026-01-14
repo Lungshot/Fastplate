@@ -5,7 +5,7 @@ UI panel for configuring text content and styling.
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame, QLineEdit, QGroupBox, QToolButton, QSizePolicy
+    QScrollArea, QFrame, QLineEdit, QGroupBox, QToolButton, QSizePolicy, QCheckBox
 )
 from PyQt5.QtCore import pyqtSignal, Qt
 
@@ -138,6 +138,34 @@ class TextSegmentWidget(QFrame):
         self._content_edit.textChanged.connect(self._on_changed)
         layout.addWidget(self._content_edit)
 
+        # Text transform buttons
+        transform_row = QHBoxLayout()
+        transform_row.setSpacing(2)
+
+        upper_btn = QToolButton()
+        upper_btn.setText("ABC")
+        upper_btn.setToolTip("UPPERCASE")
+        upper_btn.setFixedSize(36, 20)
+        upper_btn.clicked.connect(self._to_uppercase)
+        transform_row.addWidget(upper_btn)
+
+        lower_btn = QToolButton()
+        lower_btn.setText("abc")
+        lower_btn.setToolTip("lowercase")
+        lower_btn.setFixedSize(36, 20)
+        lower_btn.clicked.connect(self._to_lowercase)
+        transform_row.addWidget(lower_btn)
+
+        title_btn = QToolButton()
+        title_btn.setText("Abc")
+        title_btn.setToolTip("Title Case")
+        title_btn.setFixedSize(36, 20)
+        title_btn.clicked.connect(self._to_titlecase)
+        transform_row.addWidget(title_btn)
+
+        transform_row.addStretch()
+        layout.addLayout(transform_row)
+
         # Font selection row
         font_row = QHBoxLayout()
         font_row.setSpacing(4)
@@ -193,6 +221,18 @@ class TextSegmentWidget(QFrame):
 
     def _on_changed(self, *args):
         self.changed.emit()
+
+    def _to_uppercase(self):
+        """Convert text to UPPERCASE."""
+        self._content_edit.setText(self._content_edit.text().upper())
+
+    def _to_lowercase(self):
+        """Convert text to lowercase."""
+        self._content_edit.setText(self._content_edit.text().lower())
+
+    def _to_titlecase(self):
+        """Convert text to Title Case."""
+        self._content_edit.setText(self._content_edit.text().title())
 
     def set_fonts(self, font_names: list):
         """Set available fonts."""
@@ -549,6 +589,49 @@ class TextPanel(QWidget):
         orient_row.addWidget(self._orient_combo, stretch=1)
         style_layout.addLayout(orient_row)
 
+        # Arc text option
+        self._arc_enabled_cb = QCheckBox("Arc Text (Curved)")
+        self._arc_enabled_cb.stateChanged.connect(self._on_arc_enabled_changed)
+        style_layout.addWidget(self._arc_enabled_cb)
+
+        # Arc options group (hidden by default)
+        self._arc_group = QGroupBox("Arc Options")
+        arc_layout = QVBoxLayout(self._arc_group)
+
+        self._arc_radius_slider = SliderSpinBox("Radius:", 20, 200, 50, decimals=0, suffix=" mm")
+        self._arc_radius_slider.valueChanged.connect(self._on_changed)
+        arc_layout.addWidget(self._arc_radius_slider)
+
+        self._arc_angle_slider = SliderSpinBox("Angle:", 30, 360, 180, decimals=0, suffix="°")
+        self._arc_angle_slider.valueChanged.connect(self._on_changed)
+        arc_layout.addWidget(self._arc_angle_slider)
+
+        arc_dir_row = QHBoxLayout()
+        arc_dir_row.addWidget(QLabel("Direction:"))
+        self._arc_direction_combo = ResetableComboBox(default_text="Counterclockwise")
+        self._arc_direction_combo.addItems(["Counterclockwise", "Clockwise"])
+        self._arc_direction_combo.currentTextChanged.connect(self._on_changed)
+        arc_dir_row.addWidget(self._arc_direction_combo, stretch=1)
+        arc_layout.addLayout(arc_dir_row)
+
+        self._arc_group.setVisible(False)
+        style_layout.addWidget(self._arc_group)
+
+        # Text effect
+        effect_row = QHBoxLayout()
+        effect_row.addWidget(QLabel("Effect:"))
+        self._effect_combo = ResetableComboBox(default_text="None")
+        self._effect_combo.addItems(["None", "Bevel", "Rounded", "Outline"])
+        self._effect_combo.currentTextChanged.connect(self._on_effect_changed)
+        effect_row.addWidget(self._effect_combo, stretch=1)
+        style_layout.addLayout(effect_row)
+
+        # Effect size (shown only when effect is not None)
+        self._effect_size_slider = SliderSpinBox("Effect Size:", 0.1, 2.0, 0.3, decimals=1, suffix=" mm")
+        self._effect_size_slider.valueChanged.connect(self._on_changed)
+        self._effect_size_slider.setVisible(False)
+        style_layout.addWidget(self._effect_size_slider)
+
         layout.addWidget(style_group)
 
         # Add icon buttons
@@ -602,7 +685,19 @@ class TextPanel(QWidget):
     
     def _on_changed(self, *args):
         self.settings_changed.emit()
-    
+
+    def _on_effect_changed(self, effect_text: str):
+        """Handle effect type change."""
+        # Show/hide effect size slider based on effect selection
+        self._effect_size_slider.setVisible(effect_text != "None")
+        self._on_changed()
+
+    def _on_arc_enabled_changed(self, state: int):
+        """Handle arc text enable/disable."""
+        is_enabled = state == Qt.Checked
+        self._arc_group.setVisible(is_enabled)
+        self._on_changed()
+
     def _on_add_icon(self):
         """Open icon browser dialog."""
         from ui.dialogs.icon_browser import IconBrowserDialog
@@ -665,6 +760,8 @@ class TextPanel(QWidget):
         style_map = {"Raised": "raised", "Engraved": "engraved", "Cutout": "cutout"}
         align_map = {"Left": "left", "Center": "center", "Right": "right"}
         orient_map = {"Horizontal": "horizontal", "Vertical": "vertical"}
+        effect_map = {"None": "none", "Bevel": "bevel", "Rounded": "rounded", "Outline": "outline"}
+        arc_dir_map = {"Counterclockwise": "counterclockwise", "Clockwise": "clockwise"}
 
         return {
             'lines': [w.get_config() for w in self._line_widgets],
@@ -673,6 +770,12 @@ class TextPanel(QWidget):
             'line_spacing': self._spacing_slider.value(),
             'halign': align_map.get(self._align_combo.currentText(), 'center'),
             'orientation': orient_map.get(self._orient_combo.currentText(), 'horizontal'),
+            'effect': effect_map.get(self._effect_combo.currentText(), 'none'),
+            'effect_size': self._effect_size_slider.value(),
+            'arc_enabled': self._arc_enabled_cb.isChecked(),
+            'arc_radius': self._arc_radius_slider.value(),
+            'arc_angle': self._arc_angle_slider.value(),
+            'arc_direction': arc_dir_map.get(self._arc_direction_combo.currentText(), 'counterclockwise'),
         }
 
     def set_config(self, config: dict):
@@ -713,6 +816,28 @@ class TextPanel(QWidget):
 
             orient_map = {"horizontal": "Horizontal", "vertical": "Vertical"}
             self._orient_combo.setCurrentText(orient_map.get(config.get('orientation'), 'Horizontal'))
+
+            # Set effect options
+            effect_map = {"none": "None", "bevel": "Bevel", "rounded": "Rounded", "outline": "Outline"}
+            effect_text = effect_map.get(config.get('effect'), 'None')
+            self._effect_combo.setCurrentText(effect_text)
+            self._effect_size_slider.setVisible(effect_text != "None")
+
+            if 'effect_size' in config:
+                self._effect_size_slider.setValue(config['effect_size'])
+
+            # Set arc text options
+            arc_enabled = config.get('arc_enabled', False)
+            self._arc_enabled_cb.setChecked(arc_enabled)
+            self._arc_group.setVisible(arc_enabled)
+
+            if 'arc_radius' in config:
+                self._arc_radius_slider.setValue(config['arc_radius'])
+            if 'arc_angle' in config:
+                self._arc_angle_slider.setValue(config['arc_angle'])
+
+            arc_dir_map = {"counterclockwise": "Counterclockwise", "clockwise": "Clockwise"}
+            self._arc_direction_combo.setCurrentText(arc_dir_map.get(config.get('arc_direction'), 'Counterclockwise'))
         finally:
             self.blockSignals(False)
 

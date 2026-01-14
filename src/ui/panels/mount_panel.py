@@ -39,7 +39,9 @@ class MountPanel(QWidget):
             "Keyhole Slots",
             "Magnet Pockets",
             "Hanging Hole",
-            "Adhesive Recess"
+            "Lanyard Slot",
+            "Adhesive Recess",
+            "Clip Mount"
         ])
         self._type_combo.currentIndexChanged.connect(self._on_type_changed)
         type_row.addWidget(self._type_combo, stretch=1)
@@ -73,11 +75,19 @@ class MountPanel(QWidget):
         # Hanging hole options
         self._hanging_widget = self._create_hanging_options()
         self._options_stack.addWidget(self._hanging_widget)
-        
+
+        # Lanyard slot options
+        self._lanyard_widget = self._create_lanyard_options()
+        self._options_stack.addWidget(self._lanyard_widget)
+
         # Adhesive options
         self._adhesive_widget = self._create_adhesive_options()
         self._options_stack.addWidget(self._adhesive_widget)
-        
+
+        # Clip mount options
+        self._clip_widget = self._create_clip_options()
+        self._options_stack.addWidget(self._clip_widget)
+
         layout.addWidget(self._options_stack)
         layout.addStretch()
     
@@ -231,23 +241,87 @@ class MountPanel(QWidget):
         
         layout.addWidget(group)
         return widget
-    
+
+    def _create_lanyard_options(self) -> QWidget:
+        """Create lanyard slot options widget."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        group = QGroupBox("Lanyard Slot Options")
+        group_layout = QVBoxLayout(group)
+
+        pos_row = QHBoxLayout()
+        pos_row.addWidget(QLabel("Position:"))
+        self._lanyard_pos = ResetableComboBox(default_text="Top Center")
+        self._lanyard_pos.addItems(["Top Center", "Top Left", "Top Right", "Both Sides"])
+        self._lanyard_pos.currentTextChanged.connect(self._on_changed)
+        pos_row.addWidget(self._lanyard_pos, stretch=1)
+        group_layout.addLayout(pos_row)
+
+        self._lanyard_width = SliderSpinBox("Slot Width:", 8, 30, 15, decimals=1, suffix=" mm")
+        self._lanyard_width.valueChanged.connect(self._on_changed)
+        group_layout.addWidget(self._lanyard_width)
+
+        self._lanyard_height = SliderSpinBox("Slot Height:", 2, 8, 4, decimals=1, suffix=" mm")
+        self._lanyard_height.valueChanged.connect(self._on_changed)
+        group_layout.addWidget(self._lanyard_height)
+
+        layout.addWidget(group)
+        return widget
+
     def _create_adhesive_options(self) -> QWidget:
         """Create adhesive recess options widget."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        
+
         group = QGroupBox("Adhesive Recess")
         group_layout = QVBoxLayout(group)
-        
+
         info = QLabel("Creates shallow recesses on the back\nfor adhesive strips or tape.")
         info.setStyleSheet("color: #888;")
         group_layout.addWidget(info)
-        
+
         layout.addWidget(group)
         return widget
-    
+
+    def _create_clip_options(self) -> QWidget:
+        """Create clip mount options widget."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        group = QGroupBox("Clip Mount Options")
+        group_layout = QVBoxLayout(group)
+
+        info = QLabel("Creates a spring clip on the back\nfor clipping onto edges or pockets.")
+        info.setStyleSheet("color: #888;")
+        group_layout.addWidget(info)
+
+        pos_row = QHBoxLayout()
+        pos_row.addWidget(QLabel("Position:"))
+        self._clip_pos = ResetableComboBox(default_text="Back Top")
+        self._clip_pos.addItems(["Back Top", "Back Bottom", "Both"])
+        self._clip_pos.currentTextChanged.connect(self._on_changed)
+        pos_row.addWidget(self._clip_pos, stretch=1)
+        group_layout.addLayout(pos_row)
+
+        self._clip_width = SliderSpinBox("Clip Width:", 10, 50, 20, decimals=0, suffix=" mm")
+        self._clip_width.valueChanged.connect(self._on_changed)
+        group_layout.addWidget(self._clip_width)
+
+        self._clip_thickness = SliderSpinBox("Clip Thickness:", 1, 4, 2, decimals=1, suffix=" mm")
+        self._clip_thickness.valueChanged.connect(self._on_changed)
+        group_layout.addWidget(self._clip_thickness)
+
+        self._clip_gap = SliderSpinBox("Clip Gap:", 1, 8, 3, decimals=1, suffix=" mm")
+        self._clip_gap.valueChanged.connect(self._on_changed)
+        group_layout.addWidget(self._clip_gap)
+
+        layout.addWidget(group)
+        return widget
+
     def _on_type_changed(self, index):
         """Handle mount type change."""
         self._options_stack.setCurrentIndex(index)
@@ -265,7 +339,9 @@ class MountPanel(QWidget):
             3: "keyhole",
             4: "magnet_pockets",
             5: "hanging_hole",
-            6: "adhesive_recess"
+            6: "lanyard_slot",
+            7: "adhesive_recess",
+            8: "clip_mount"
         }
         
         pattern_map = {
@@ -292,6 +368,13 @@ class MountPanel(QWidget):
             'magnet_edge': self._magnet_edge.value(),
             'hanging_position': self._hanging_pos.currentText().lower().replace(' ', '_'),
             'hanging_diameter': self._hanging_diameter.value(),
+            'lanyard_position': self._lanyard_pos.currentText().lower().replace(' ', '_'),
+            'lanyard_width': self._lanyard_width.value(),
+            'lanyard_height': self._lanyard_height.value(),
+            'clip_position': self._clip_pos.currentText().lower().replace(' ', '_'),
+            'clip_width': self._clip_width.value(),
+            'clip_thickness': self._clip_thickness.value(),
+            'clip_gap': self._clip_gap.value(),
         }
     
     def set_config(self, config: dict):
@@ -307,7 +390,9 @@ class MountPanel(QWidget):
                 "keyhole": 3,
                 "magnet_pockets": 4,
                 "hanging_hole": 5,
-                "adhesive_recess": 6
+                "lanyard_slot": 6,
+                "adhesive_recess": 7,
+                "clip_mount": 8
             }
             self._type_combo.setCurrentIndex(type_map.get(config.get('type'), 0))
             self._options_stack.setCurrentIndex(type_map.get(config.get('type'), 0))
@@ -360,6 +445,35 @@ class MountPanel(QWidget):
                 self._hanging_pos.setCurrentText(pos_map.get(config['hanging_position'], 'Top Center'))
             if 'hanging_diameter' in config:
                 self._hanging_diameter.setValue(config['hanging_diameter'])
+
+            # Lanyard slot settings
+            lanyard_pos_map = {
+                "top_center": "Top Center",
+                "top_left": "Top Left",
+                "top_right": "Top Right",
+                "both_sides": "Both Sides"
+            }
+            if 'lanyard_position' in config:
+                self._lanyard_pos.setCurrentText(lanyard_pos_map.get(config['lanyard_position'], 'Top Center'))
+            if 'lanyard_width' in config:
+                self._lanyard_width.setValue(config['lanyard_width'])
+            if 'lanyard_height' in config:
+                self._lanyard_height.setValue(config['lanyard_height'])
+
+            # Clip mount settings
+            clip_pos_map = {
+                "back_top": "Back Top",
+                "back_bottom": "Back Bottom",
+                "both": "Both"
+            }
+            if 'clip_position' in config:
+                self._clip_pos.setCurrentText(clip_pos_map.get(config['clip_position'], 'Back Top'))
+            if 'clip_width' in config:
+                self._clip_width.setValue(config['clip_width'])
+            if 'clip_thickness' in config:
+                self._clip_thickness.setValue(config['clip_thickness'])
+            if 'clip_gap' in config:
+                self._clip_gap.setValue(config['clip_gap'])
         finally:
             self.blockSignals(False)
 

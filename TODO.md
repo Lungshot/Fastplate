@@ -210,15 +210,105 @@ pyinstaller --name Fastplate --onedir --windowed --paths src ^
 
 ---
 
-## Feature Wishlist
+## Newly Implemented Features (2026-01-14)
 
-- [ ] Multi-color STL export (for multi-material printing)
-- [ ] QR code support
-- [x] Logo/image import (SVG support implemented)
+### Dark Mode UI
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Toggle dark/light theme from View menu
+- **Files:** `src/ui/theme_manager.py`, `src/ui/main_window.py`
+
+### Project Save/Load
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Save/load complete project state as .fastplate files
+- **Capabilities:**
+  - File > Save Project (Ctrl+S)
+  - File > Open Project (Ctrl+O)
+  - Project files include all settings (text, plate, mounts, SVGs, QR codes)
+- **Files:** `src/ui/main_window.py`
+
+### More Plate Shapes
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Additional decorative plate shapes
+- **New Shapes:** Badge, Keychain, Star, Diamond, Arrow, Heart, Cloud
+- **Files:** `src/core/geometry/base_plates.py`
+
+### QR Code Generator
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Generate QR codes embedded in nameplates
+- **Capabilities:**
+  - Generate from text, URLs, contact info
+  - Adjustable size, depth, error correction
+  - Raised, engraved, or cutout styles
+  - Uses `qrcode` Python library
+- **Files:**
+  - `src/core/geometry/qr_generator.py`
+  - `src/ui/dialogs/qr_code_dialog.py`
+  - `src/ui/panels/svg_panel.py` (Add QR Code button)
+
+### Curved/Arc Text (Core)
+- **Status:** ✅ IMPLEMENTED (core geometry)
+- **Feature:** Render text along curved paths
+- **Capabilities:**
+  - Configurable arc radius and angle
+  - Clockwise or counterclockwise direction
+  - Per-character positioning along arc
+- **Files:** `src/core/geometry/arc_text.py`
+- **Note:** UI integration pending
+
+### Multi-Color STL Export
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Export base and text as separate files for multi-color printing
+- **Capabilities:**
+  - Export dialog with options
+  - Separate base and text files
+  - STL, STEP, or 3MF formats
+  - Configurable file suffixes
+- **Files:**
+  - `src/ui/dialogs/multicolor_export_dialog.py`
+  - `src/ui/main_window.py`
+
+### Batch Generation
+- **Status:** ✅ IMPLEMENTED
+- **Feature:** Generate multiple nameplates from a list
+- **Capabilities:**
+  - Import names from CSV/TXT files
+  - Use current design as template
+  - Progress tracking
+  - Export to STL, STEP, or 3MF
+- **Files:**
+  - `src/ui/dialogs/batch_dialog.py`
+  - `src/ui/main_window.py` (File > Batch Generate)
+
+### Text Effects (Core)
+- **Status:** ✅ IMPLEMENTED (core geometry)
+- **Feature:** Visual effects for 3D text
+- **Effects:**
+  - Bevel: Chamfered top edges
+  - Rounded: Filleted top edges
+  - Outline: Hollow text (shell operation)
+- **Files:** `src/core/geometry/text_builder.py`
+- **Note:** UI integration pending
+
+### Pattern Backgrounds (Core)
+- **Status:** ✅ IMPLEMENTED (core geometry)
+- **Feature:** Decorative patterns for plate backgrounds
+- **Patterns:**
+  - Grid, Dots, Diamonds, Hexagons
+  - Lines, Crosshatch, Chevron
+- **Files:** `src/core/geometry/patterns.py`
+- **Note:** UI integration pending
+
+---
+
+## Feature Wishlist (Remaining)
+
 - [ ] Undo/redo system
-- [ ] Dark mode UI theme
 - [ ] Standalone text option (text placeable independently on baseplate)
 - [ ] Sweeping nameplate style (reference: thingiverse.com/thing:3045130)
+- [ ] Multiple independent text blocks
+- [ ] UI integration for Arc Text
+- [ ] UI integration for Text Effects
+- [ ] UI integration for Pattern Backgrounds
 
 ---
 

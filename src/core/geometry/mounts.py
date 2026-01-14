@@ -20,6 +20,8 @@ class MountType(Enum):
     HANGING_HOLE = "hanging_hole"
     FRENCH_CLEAT = "french_cleat"
     ADHESIVE_RECESS = "adhesive_recess"
+    LANYARD_SLOT = "lanyard_slot"
+    CLIP_MOUNT = "clip_mount"
 
 
 class HolePattern(Enum):
@@ -88,11 +90,22 @@ class MountConfig:
     # Hanging hole options
     hanging_hole_diameter: float = 5.0   # mm
     hanging_hole_position: str = "top_center"  # top_center, corners
-    
+
+    # Lanyard slot options
+    lanyard_slot_width: float = 15.0     # mm - length of the slot
+    lanyard_slot_height: float = 4.0     # mm - width of the slot opening
+    lanyard_slot_position: str = "top_center"  # top_center, top_left, top_right
+
     # French cleat options
     cleat_angle: float = 45.0           # degrees
     cleat_depth: float = 5.0            # mm
     cleat_width: float = 15.0           # mm
+
+    # Clip mount options
+    clip_width: float = 20.0            # mm - width of clip
+    clip_thickness: float = 2.0         # mm - material thickness
+    clip_gap: float = 3.0               # mm - gap for material to clip onto
+    clip_position: str = "back_top"     # back_top, back_bottom, back_both
 
 
 class MountGenerator:
@@ -150,6 +163,14 @@ class MountGenerator:
             result = self._make_adhesive_recess(plate_width, plate_height, plate_thickness, cfg)
             print(f"[Mount] Adhesive recess result: {result}")
             return None, result
+        elif cfg.mount_type == MountType.LANYARD_SLOT:
+            result = self._make_lanyard_slot(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Lanyard slot result: {result}")
+            return None, result
+        elif cfg.mount_type == MountType.CLIP_MOUNT:
+            result = self._make_clip_mount(plate_width, plate_height, plate_thickness, cfg)
+            print(f"[Mount] Clip mount result: {result}")
+            return result, None  # Clips are added, not subtracted
 
         print(f"[Mount] Unknown mount type: {cfg.mount_type}")
         return None, None
@@ -401,6 +422,116 @@ class MountGenerator:
         except Exception as e:
             print(f"Error creating adhesive recess: {e}")
             return None
+
+    def _make_lanyard_slot(self, plate_width: float, plate_height: float,
+                           plate_thickness: float, cfg: MountConfig) -> cq.Workplane:
+        """Create an elongated slot for lanyard attachment."""
+        # Determine slot position
+        positions = []
+        edge_dist = cfg.hole_edge_distance
+
+        if cfg.lanyard_slot_position == "top_center":
+            positions = [(0, plate_height / 2 - edge_dist)]
+        elif cfg.lanyard_slot_position == "top_left":
+            positions = [(-plate_width / 4, plate_height / 2 - edge_dist)]
+        elif cfg.lanyard_slot_position == "top_right":
+            positions = [(plate_width / 4, plate_height / 2 - edge_dist)]
+        elif cfg.lanyard_slot_position == "both_sides":
+            positions = [
+                (-plate_width / 4, plate_height / 2 - edge_dist),
+                (plate_width / 4, plate_height / 2 - edge_dist)
+            ]
+
+        if not positions:
+            return None
+
+        slots = None
+        for x, y in positions:
+            try:
+                # Create stadium/slot shape (rounded rectangle)
+                # slot2D creates a slot with rounded ends
+                slot = (
+                    cq.Workplane("XY")
+                    .center(x, y)
+                    .slot2D(cfg.lanyard_slot_width, cfg.lanyard_slot_height)
+                    .extrude(plate_thickness + 10)  # Extra height for raised elements
+                    .translate((0, 0, -0.1))
+                )
+
+                if slots is None:
+                    slots = slot
+                else:
+                    slots = slots.union(slot)
+            except Exception as e:
+                print(f"Error creating lanyard slot at ({x}, {y}): {e}")
+
+        return slots
+
+    def _make_clip_mount(self, plate_width: float, plate_height: float,
+                         plate_thickness: float, cfg: MountConfig) -> cq.Workplane:
+        """Create spring clip attachments on the back of the plate."""
+        # Clip profile: C-shaped bracket that can clip onto a surface
+        # The clip extends from the back of the plate
+
+        positions = []
+        if cfg.clip_position in ("back_top", "back_both"):
+            positions.append((0, plate_height / 2 - cfg.clip_width / 2 - 5, "top"))
+        if cfg.clip_position in ("back_bottom", "back_both"):
+            positions.append((0, -plate_height / 2 + cfg.clip_width / 2 + 5, "bottom"))
+
+        if not positions:
+            return None
+
+        clips = None
+        for x, y, pos_type in positions:
+            try:
+                # Create C-shaped clip profile
+                # The clip has a back plate, a gap, and a spring arm
+                clip_depth = cfg.clip_gap + cfg.clip_thickness * 2
+                arm_length = cfg.clip_gap + cfg.clip_thickness
+
+                # Back mounting plate
+                back = (
+                    cq.Workplane("XY")
+                    .rect(cfg.clip_width, cfg.clip_thickness)
+                    .extrude(clip_depth)
+                    .translate((x, y, -clip_depth))
+                )
+
+                # Bottom/base of clip
+                base = (
+                    cq.Workplane("XY")
+                    .rect(cfg.clip_width, arm_length)
+                    .extrude(cfg.clip_thickness)
+                    .translate((x, y - arm_length / 2 + cfg.clip_thickness / 2, -clip_depth))
+                )
+
+                # Spring arm (angled slightly inward for grip)
+                arm_points = [
+                    (0, 0),
+                    (cfg.clip_thickness, 0),
+                    (cfg.clip_thickness * 0.7, clip_depth * 0.8),
+                    (0, clip_depth * 0.9),
+                ]
+                arm = (
+                    cq.Workplane("XZ")
+                    .polyline(arm_points)
+                    .close()
+                    .extrude(cfg.clip_width)
+                    .translate((x - cfg.clip_width / 2, y - arm_length + cfg.clip_thickness, -clip_depth))
+                )
+
+                clip = back.union(base).union(arm)
+
+                if clips is None:
+                    clips = clip
+                else:
+                    clips = clips.union(clip)
+
+            except Exception as e:
+                print(f"Error creating clip mount at ({x}, {y}): {e}")
+
+        return clips
 
 
 def get_common_magnet_sizes() -> List[MagnetSize]:

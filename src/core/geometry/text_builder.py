@@ -37,6 +37,14 @@ class TextOrientation(Enum):
     VERTICAL = "vertical"
 
 
+class TextEffect(Enum):
+    """Text visual effects."""
+    NONE = "none"
+    BEVEL = "bevel"       # Chamfered top edges
+    ROUNDED = "rounded"   # Filleted top edges
+    OUTLINE = "outline"   # Hollow/outline text
+
+
 @dataclass
 class TextSegment:
     """A segment of text within a line, with its own font settings."""
@@ -132,6 +140,11 @@ class TextConfig:
     # Position offset
     offset_x: float = 0.0
     offset_y: float = 0.0
+
+    # Text effects
+    effect: TextEffect = TextEffect.NONE
+    effect_size: float = 0.3     # mm - size of bevel/fillet/outline
+    outline_thickness: float = 1.0  # mm - thickness for outline mode
     
     def add_line(self, content: str = "", **kwargs) -> 'TextConfig':
         """Add a new text line."""
@@ -271,6 +284,9 @@ class TextBuilder:
         if cfg.orientation == TextOrientation.VERTICAL:
             combined = combined.rotate((0, 0, 0), (0, 0, 1), 90)
 
+        # Apply text effects
+        combined = self._apply_effects(combined, cfg)
+
         # Calculate overall bounding box
         try:
             bb = combined.val().BoundingBox()
@@ -280,6 +296,40 @@ class TextBuilder:
             overall_bbox = (-50, -15, 50, 15)
 
         return combined, overall_bbox
+
+    def _apply_effects(self, geometry: cq.Workplane, cfg: TextConfig) -> cq.Workplane:
+        """Apply text effects (bevel, rounded, outline) to the geometry."""
+        if cfg.effect == TextEffect.NONE:
+            return geometry
+
+        try:
+            if cfg.effect == TextEffect.BEVEL:
+                # Apply chamfer to top edges
+                effect_size = min(cfg.effect_size, cfg.depth * 0.4)  # Max 40% of depth
+                if effect_size > 0.05:
+                    return geometry.edges(">Z").chamfer(effect_size)
+
+            elif cfg.effect == TextEffect.ROUNDED:
+                # Apply fillet to top edges
+                effect_size = min(cfg.effect_size, cfg.depth * 0.4)
+                if effect_size > 0.05:
+                    return geometry.edges(">Z").fillet(effect_size)
+
+            elif cfg.effect == TextEffect.OUTLINE:
+                # Create hollow/outline text by subtracting a smaller version
+                # This is complex with compounds, so we'll try a simpler approach
+                # using shell if available, otherwise just return as-is
+                try:
+                    return geometry.shell(-cfg.outline_thickness)
+                except:
+                    # Shell operation not supported, return original
+                    pass
+
+        except Exception as e:
+            # If effect fails, return original geometry
+            print(f"Text effect error: {e}")
+
+        return geometry
     
     def _generate_line(self, line_cfg: TextLineConfig, depth: float) -> Tuple[Optional[cq.Workplane], Tuple[float, float, float, float]]:
         """Generate a single line of 3D text, supporting multiple segments with different fonts."""

@@ -16,6 +16,10 @@ class BorderStyle(Enum):
     INSET = "inset"         # Border is recessed into base
     DOUBLE = "double"       # Double-line border
     GROOVE = "groove"       # V-groove border
+    ROPE = "rope"           # Twisted rope pattern
+    DOTS = "dots"           # Dotted border
+    DASHES = "dashes"       # Dashed border
+    ORNATE = "ornate"       # Decorative with corner pieces
 
 
 @dataclass
@@ -28,10 +32,14 @@ class BorderConfig:
     offset: float = 2.0          # mm - distance from plate edge
     corner_style: str = "rounded"  # rounded, square, chamfered
     corner_radius: float = 3.0   # mm - for rounded corners
-    
+
     # For double border
     double_gap: float = 2.0      # mm - gap between lines
     double_inner_width: float = 1.5  # mm - inner line width
+
+    # For pattern borders (rope, dots, dashes)
+    pattern_size: float = 3.0    # mm - size of pattern elements
+    pattern_spacing: float = 2.0 # mm - spacing between elements
 
 
 class BorderGenerator:
@@ -70,7 +78,15 @@ class BorderGenerator:
             return self._make_double_border(plate_width, plate_height, plate_thickness, cfg)
         elif cfg.style == BorderStyle.GROOVE:
             return self._make_groove_border(plate_width, plate_height, plate_thickness, cfg)
-        
+        elif cfg.style == BorderStyle.ROPE:
+            return self._make_rope_border(plate_width, plate_height, plate_thickness, cfg)
+        elif cfg.style == BorderStyle.DOTS:
+            return self._make_dots_border(plate_width, plate_height, plate_thickness, cfg)
+        elif cfg.style == BorderStyle.DASHES:
+            return self._make_dashes_border(plate_width, plate_height, plate_thickness, cfg)
+        elif cfg.style == BorderStyle.ORNATE:
+            return self._make_ornate_border(plate_width, plate_height, plate_thickness, cfg)
+
         return None
     
     def _make_raised_border(self, plate_width: float, plate_height: float,
@@ -193,7 +209,269 @@ class BorderGenerator:
         """Create a V-groove border (to be subtracted from plate)."""
         # Create a simple groove for now - V-groove would require more complex lofting
         return self._make_inset_border(plate_width, plate_height, plate_thickness, cfg)
-    
+
+    def _make_rope_border(self, plate_width: float, plate_height: float,
+                          plate_thickness: float, cfg: BorderConfig) -> cq.Workplane:
+        """Create a twisted rope pattern border."""
+        try:
+            result = None
+            inner_w = plate_width - cfg.offset * 2
+            inner_h = plate_height - cfg.offset * 2
+
+            rope_radius = cfg.width / 2
+            spacing = cfg.pattern_spacing + cfg.pattern_size
+            z_pos = plate_thickness - 0.1
+
+            # Create rope segments along each edge
+            # Top edge
+            x = -inner_w / 2 + spacing / 2
+            while x <= inner_w / 2 - spacing / 2:
+                twist = self._create_rope_segment(rope_radius, cfg.height, cfg.pattern_size)
+                if twist:
+                    twist = twist.translate((x, inner_h / 2, z_pos))
+                    result = twist if result is None else result.union(twist)
+                x += spacing
+
+            # Bottom edge
+            x = -inner_w / 2 + spacing / 2
+            while x <= inner_w / 2 - spacing / 2:
+                twist = self._create_rope_segment(rope_radius, cfg.height, cfg.pattern_size)
+                if twist:
+                    twist = twist.translate((x, -inner_h / 2, z_pos))
+                    result = result.union(twist) if result else twist
+                x += spacing
+
+            # Left edge
+            y = -inner_h / 2 + spacing / 2
+            while y <= inner_h / 2 - spacing / 2:
+                twist = self._create_rope_segment(rope_radius, cfg.height, cfg.pattern_size)
+                if twist:
+                    twist = twist.rotate((0, 0, 0), (0, 0, 1), 90)
+                    twist = twist.translate((-inner_w / 2, y, z_pos))
+                    result = result.union(twist) if result else twist
+                y += spacing
+
+            # Right edge
+            y = -inner_h / 2 + spacing / 2
+            while y <= inner_h / 2 - spacing / 2:
+                twist = self._create_rope_segment(rope_radius, cfg.height, cfg.pattern_size)
+                if twist:
+                    twist = twist.rotate((0, 0, 0), (0, 0, 1), 90)
+                    twist = twist.translate((inner_w / 2, y, z_pos))
+                    result = result.union(twist) if result else twist
+                y += spacing
+
+            return result
+        except Exception as e:
+            print(f"Error creating rope border: {e}")
+            return None
+
+    def _create_rope_segment(self, radius: float, height: float, length: float) -> Optional[cq.Workplane]:
+        """Create a single rope twist segment."""
+        try:
+            # Simplified rope segment - two overlapping cylinders at angle
+            seg1 = (
+                cq.Workplane("XY")
+                .cylinder(length, radius)
+                .rotate((0, 0, 0), (0, 1, 0), 90)
+                .rotate((0, 0, 0), (0, 0, 1), 20)
+            )
+            seg2 = (
+                cq.Workplane("XY")
+                .cylinder(length, radius)
+                .rotate((0, 0, 0), (0, 1, 0), 90)
+                .rotate((0, 0, 0), (0, 0, 1), -20)
+            )
+            return seg1.union(seg2)
+        except Exception as e:
+            print(f"Error creating rope segment: {e}")
+            return None
+
+    def _make_dots_border(self, plate_width: float, plate_height: float,
+                          plate_thickness: float, cfg: BorderConfig) -> cq.Workplane:
+        """Create a dotted border."""
+        try:
+            result = None
+            inner_w = plate_width - cfg.offset * 2
+            inner_h = plate_height - cfg.offset * 2
+
+            dot_radius = cfg.pattern_size / 2
+            spacing = cfg.pattern_size + cfg.pattern_spacing
+            z_pos = plate_thickness - 0.1
+
+            # Top edge
+            x = -inner_w / 2 + spacing / 2
+            while x <= inner_w / 2 - spacing / 2:
+                dot = (
+                    cq.Workplane("XY")
+                    .circle(dot_radius)
+                    .extrude(cfg.height)
+                    .translate((x, inner_h / 2, z_pos))
+                )
+                result = dot if result is None else result.union(dot)
+                x += spacing
+
+            # Bottom edge
+            x = -inner_w / 2 + spacing / 2
+            while x <= inner_w / 2 - spacing / 2:
+                dot = (
+                    cq.Workplane("XY")
+                    .circle(dot_radius)
+                    .extrude(cfg.height)
+                    .translate((x, -inner_h / 2, z_pos))
+                )
+                result = result.union(dot)
+                x += spacing
+
+            # Left edge (avoid corners)
+            y = -inner_h / 2 + spacing
+            while y <= inner_h / 2 - spacing:
+                dot = (
+                    cq.Workplane("XY")
+                    .circle(dot_radius)
+                    .extrude(cfg.height)
+                    .translate((-inner_w / 2, y, z_pos))
+                )
+                result = result.union(dot)
+                y += spacing
+
+            # Right edge (avoid corners)
+            y = -inner_h / 2 + spacing
+            while y <= inner_h / 2 - spacing:
+                dot = (
+                    cq.Workplane("XY")
+                    .circle(dot_radius)
+                    .extrude(cfg.height)
+                    .translate((inner_w / 2, y, z_pos))
+                )
+                result = result.union(dot)
+                y += spacing
+
+            return result
+        except Exception as e:
+            print(f"Error creating dots border: {e}")
+            return None
+
+    def _make_dashes_border(self, plate_width: float, plate_height: float,
+                            plate_thickness: float, cfg: BorderConfig) -> cq.Workplane:
+        """Create a dashed border."""
+        try:
+            result = None
+            inner_w = plate_width - cfg.offset * 2
+            inner_h = plate_height - cfg.offset * 2
+
+            dash_length = cfg.pattern_size
+            spacing = dash_length + cfg.pattern_spacing
+            z_pos = plate_thickness - 0.1
+
+            # Top edge (horizontal dashes)
+            x = -inner_w / 2 + spacing / 2
+            while x <= inner_w / 2 - spacing / 2:
+                dash = (
+                    cq.Workplane("XY")
+                    .rect(dash_length, cfg.width)
+                    .extrude(cfg.height)
+                    .translate((x, inner_h / 2, z_pos))
+                )
+                result = dash if result is None else result.union(dash)
+                x += spacing
+
+            # Bottom edge
+            x = -inner_w / 2 + spacing / 2
+            while x <= inner_w / 2 - spacing / 2:
+                dash = (
+                    cq.Workplane("XY")
+                    .rect(dash_length, cfg.width)
+                    .extrude(cfg.height)
+                    .translate((x, -inner_h / 2, z_pos))
+                )
+                result = result.union(dash)
+                x += spacing
+
+            # Left edge (vertical dashes)
+            y = -inner_h / 2 + spacing / 2
+            while y <= inner_h / 2 - spacing / 2:
+                dash = (
+                    cq.Workplane("XY")
+                    .rect(cfg.width, dash_length)
+                    .extrude(cfg.height)
+                    .translate((-inner_w / 2, y, z_pos))
+                )
+                result = result.union(dash)
+                y += spacing
+
+            # Right edge
+            y = -inner_h / 2 + spacing / 2
+            while y <= inner_h / 2 - spacing / 2:
+                dash = (
+                    cq.Workplane("XY")
+                    .rect(cfg.width, dash_length)
+                    .extrude(cfg.height)
+                    .translate((inner_w / 2, y, z_pos))
+                )
+                result = result.union(dash)
+                y += spacing
+
+            return result
+        except Exception as e:
+            print(f"Error creating dashes border: {e}")
+            return None
+
+    def _make_ornate_border(self, plate_width: float, plate_height: float,
+                            plate_thickness: float, cfg: BorderConfig) -> cq.Workplane:
+        """Create an ornate border with decorative corner pieces."""
+        try:
+            # Start with simple raised border
+            border = self._make_raised_border(plate_width, plate_height, plate_thickness, cfg)
+            if not border:
+                return None
+
+            # Add corner ornaments
+            inner_w = plate_width - cfg.offset * 2
+            inner_h = plate_height - cfg.offset * 2
+            ornament_size = cfg.pattern_size * 2
+            z_pos = plate_thickness - 0.1
+
+            corners = [
+                (-inner_w / 2, inner_h / 2, 0),      # Top-left
+                (inner_w / 2, inner_h / 2, 90),     # Top-right
+                (inner_w / 2, -inner_h / 2, 180),   # Bottom-right
+                (-inner_w / 2, -inner_h / 2, 270),  # Bottom-left
+            ]
+
+            for x, y, angle in corners:
+                ornament = self._create_corner_ornament(ornament_size, cfg.height)
+                if ornament:
+                    ornament = ornament.rotate((0, 0, 0), (0, 0, 1), angle)
+                    ornament = ornament.translate((x, y, z_pos))
+                    border = border.union(ornament)
+
+            return border
+        except Exception as e:
+            print(f"Error creating ornate border: {e}")
+            return None
+
+    def _create_corner_ornament(self, size: float, height: float) -> Optional[cq.Workplane]:
+        """Create a decorative corner ornament."""
+        try:
+            # Simple fleur-de-lis style ornament
+            diamond = (
+                cq.Workplane("XY")
+                .polygon(4, size * 0.7)
+                .extrude(height)
+                .rotate((0, 0, 0), (0, 0, 1), 45)
+            )
+            circle1 = (
+                cq.Workplane("XY")
+                .circle(size * 0.2)
+                .extrude(height)
+                .translate((size * 0.3, size * 0.3, 0))
+            )
+            return diamond.union(circle1)
+        except Exception as e:
+            print(f"Error creating corner ornament: {e}")
+            return None
+
     def get_inset_area(self, plate_width: float, plate_height: float,
                        config: Optional[BorderConfig] = None) -> Tuple[float, float]:
         """

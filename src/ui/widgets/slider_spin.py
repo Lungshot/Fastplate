@@ -66,18 +66,25 @@ class SliderSpinBox(QWidget):
     """
     Combined slider and spinbox widget for numeric input.
     Includes optional reset-to-default button.
+
+    When defer_slider_updates=True (default), the valueChanged signal is only
+    emitted when the slider is released, not during dragging. This reduces
+    expensive preview updates while dragging.
     """
 
     valueChanged = pyqtSignal(float)
 
     def __init__(self, label: str = "", min_val: float = 0, max_val: float = 100,
                  default: float = 50, decimals: int = 1, suffix: str = "",
-                 show_reset: bool = True, parent=None):
+                 show_reset: bool = True, defer_slider_updates: bool = True,
+                 parent=None):
         super().__init__(parent)
 
         self._decimals = decimals
         self._multiplier = 10 ** decimals
         self._default = default
+        self._defer_slider_updates = defer_slider_updates
+        self._slider_pressed = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -94,6 +101,9 @@ class SliderSpinBox(QWidget):
         self._slider.setMaximum(int(max_val * self._multiplier))
         self._slider.setValue(int(default * self._multiplier))
         self._slider.valueChanged.connect(self._on_slider_changed)
+        # Connect press/release for deferred updates
+        self._slider.sliderPressed.connect(self._on_slider_pressed)
+        self._slider.sliderReleased.connect(self._on_slider_released)
         layout.addWidget(self._slider, stretch=1)
 
         # Spinbox
@@ -130,16 +140,32 @@ class SliderSpinBox(QWidget):
             self._reset_btn = None
 
         self._updating = False
-    
+
+    def _on_slider_pressed(self):
+        """Track when slider is being dragged."""
+        self._slider_pressed = True
+
+    def _on_slider_released(self):
+        """Emit value when slider is released."""
+        self._slider_pressed = False
+        if self._defer_slider_updates:
+            # Emit the final value now
+            float_val = self._slider.value() / self._multiplier
+            self.valueChanged.emit(float_val)
+
     def _on_slider_changed(self, value):
         if self._updating:
             return
         self._updating = True
         float_val = value / self._multiplier
         self._spinbox.setValue(float_val)
-        self.valueChanged.emit(float_val)
+
+        # Only emit immediately if not deferring, or if not dragging
+        if not self._defer_slider_updates or not self._slider_pressed:
+            self.valueChanged.emit(float_val)
+
         self._updating = False
-    
+
     def _on_spinbox_changed(self, value):
         if self._updating:
             return
