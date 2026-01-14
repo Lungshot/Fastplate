@@ -2,6 +2,7 @@
 Font Awesome Free Icons Manager
 Provides access to Font Awesome free icons with searchable categories.
 Icons are fetched from the Font Awesome GitHub repository.
+Downloaded icons are cached locally for offline use.
 """
 
 import json
@@ -11,7 +12,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from utils.resources import get_data_path
+from utils.resources import get_data_path, get_user_data_dir
 
 
 @dataclass
@@ -106,12 +107,17 @@ class FontAwesomeManager:
         self._by_category: Dict[str, List[FontAwesomeIcon]] = {}
         self._by_style: Dict[str, List[FontAwesomeIcon]] = {}
         self._loaded = False
-        self._svg_cache: Dict[str, str] = {}  # Cache downloaded SVGs
+        self._svg_cache: Dict[str, str] = {}  # In-memory cache
 
         if icons_path:
             self._icons_path = icons_path
         else:
             self._icons_path = get_data_path('font_awesome_icons.json')
+
+        # Set up persistent cache directory
+        self._cache_dir = get_user_data_dir() / 'icon_cache' / 'font_awesome'
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._load_cache_from_disk()
 
     def load(self, force_reload: bool = False) -> bool:
         """
@@ -326,15 +332,30 @@ class FontAwesomeManager:
             style = 'solid'
 
         cache_key = f"{name}_{style}"
+
+        # Check in-memory cache first
         if cache_key in self._svg_cache:
             return self._svg_cache[cache_key]
 
+        # Check disk cache
+        cache_file = self._cache_dir / f"{cache_key}.svg"
+        if cache_file.exists():
+            try:
+                svg_content = cache_file.read_text(encoding='utf-8')
+                self._svg_cache[cache_key] = svg_content
+                return svg_content
+            except Exception:
+                pass  # Fall through to download
+
+        # Download from CDN
         url = self.CDN_URL.format(name=name, style=style)
 
         try:
             with urllib.request.urlopen(url, timeout=10) as response:
                 svg_content = response.read().decode('utf-8')
                 self._svg_cache[cache_key] = svg_content
+                # Save to disk cache
+                self._save_to_disk_cache(cache_key, svg_content)
                 return svg_content
         except urllib.error.HTTPError as e:
             print(f"HTTP error downloading Font Awesome icon {name}: {e.code}")
@@ -345,6 +366,41 @@ class FontAwesomeManager:
         except Exception as e:
             print(f"Error downloading Font Awesome icon {name}: {e}")
             return None
+
+    def _load_cache_from_disk(self):
+        """Load cached SVGs from disk into memory."""
+        try:
+            for svg_file in self._cache_dir.glob("*.svg"):
+                cache_key = svg_file.stem  # filename without extension
+                try:
+                    self._svg_cache[cache_key] = svg_file.read_text(encoding='utf-8')
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Error loading Font Awesome cache: {e}")
+
+    def _save_to_disk_cache(self, cache_key: str, svg_content: str):
+        """Save an SVG to the disk cache."""
+        try:
+            cache_file = self._cache_dir / f"{cache_key}.svg"
+            cache_file.write_text(svg_content, encoding='utf-8')
+        except Exception as e:
+            print(f"Error saving to Font Awesome cache: {e}")
+
+    def clear_cache(self):
+        """Clear all cached SVGs (both memory and disk)."""
+        self._svg_cache.clear()
+        try:
+            for svg_file in self._cache_dir.glob("*.svg"):
+                svg_file.unlink()
+            print("Font Awesome icon cache cleared")
+        except Exception as e:
+            print(f"Error clearing Font Awesome cache: {e}")
+
+    @property
+    def cache_count(self) -> int:
+        """Get the number of cached SVGs."""
+        return len(self._svg_cache)
 
     def get_all_icons(self) -> List[FontAwesomeIcon]:
         """Get all loaded icons."""

@@ -144,6 +144,14 @@ class FontAwesomeDialog(QDialog):
         self._style_combo.currentIndexChanged.connect(self._on_style_changed)
         filter_layout.addWidget(self._style_combo)
 
+        filter_layout.addSpacing(20)
+
+        # Refresh cache button
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.setToolTip("Clear cached icons and re-download from server")
+        refresh_btn.clicked.connect(self._on_refresh_cache)
+        filter_layout.addWidget(refresh_btn)
+
         layout.addLayout(filter_layout)
 
         # Icon grid in scroll area
@@ -402,6 +410,23 @@ class FontAwesomeDialog(QDialog):
             return
 
         self.accept()
+
+    def _on_refresh_cache(self):
+        """Clear the icon cache and refresh displayed icons."""
+        # Clear cache
+        self._manager.clear_cache()
+        self._loading_label.setText("Cache cleared. Refreshing icons...")
+
+        # Re-display current icons (will trigger fresh downloads)
+        cat_data = self._category_combo.currentData()
+        if cat_data == "all":
+            if self._search_edit.text():
+                self._on_search(self._search_edit.text())
+            else:
+                self._display_icons(self._manager.get_popular_icons(100))
+        else:
+            icons = self._manager.get_icons_by_category(cat_data)[:200]
+            self._display_icons(icons)
 
     def get_selected_icon(self) -> dict:
         """Get the selected icon data including SVG content."""
