@@ -351,12 +351,18 @@ class MainWindow(QMainWindow):
             if self._preview_manager:
                 from core.geometry.text_builder import TextStyle
                 from core.geometry.base_plates import PlateShape
+                from core.geometry.mounts import MountType
 
                 config = self._pending_config
 
-                # For raised text, render base and text separately with different colors
+                # Check if mounts are enabled (which modify the geometry)
+                has_mounts = config.mount.mount_type != MountType.NONE
+
+                # For raised text WITHOUT mounts, render base and text separately with different colors
+                # When mounts are enabled, we must use combined geometry to show holes correctly
                 if (config.text.style == TextStyle.RAISED and
-                    config.plate.shape != PlateShape.NONE):
+                    config.plate.shape != PlateShape.NONE and
+                    not has_mounts):
 
                     # Position text on top of plate for raised style
                     if text_geom is not None:
@@ -368,7 +374,7 @@ class MainWindow(QMainWindow):
 
                     self._preview_manager.update_preview_separate(base_geom, text_geom, auto_fit=self._should_auto_fit)
                 else:
-                    # For engraved/cutout or text-only, use combined geometry
+                    # For engraved/cutout, text-only, or raised with mounts - use combined geometry
                     self._preview_manager.update_preview(geometry, auto_fit=self._should_auto_fit)
 
                 # After first load, don't auto-fit anymore
