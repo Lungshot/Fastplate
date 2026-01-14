@@ -444,9 +444,10 @@ class NameplateBuilder:
                 engrave_cfg.depth = cfg.text.depth + 10
                 engrave_text, _ = TextBuilder().generate(engrave_cfg)
                 if engrave_text is not None:
-                    # Position so text starts well above surface (to cut through raised borders)
-                    # and cuts down to the desired engrave depth
-                    text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth - 10 + 0.5))
+                    # Position so bottom of cut is at engrave depth, top extends above raised borders
+                    # Text geometry starts at Z=0 and extends to Z=depth, so translate so Z=0
+                    # is at the bottom of the engrave cut (plate_thickness - text.depth)
+                    text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth))
                     # Handle compounds (from multi-segment text)
                     try:
                         from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
@@ -544,7 +545,36 @@ class NameplateBuilder:
             result = result.union(mount_add)
         if mount_subtract is not None:
             debug_log.debug("Applying mount_subtract via cut")
-            result = result.cut(mount_subtract)
+            try:
+                # Try to fuse the result first to ensure clean solid for cutting
+                # This helps when result is a compound from multiple text unions
+                try:
+                    from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+                    from OCP.TopTools import TopTools_ListOfShape
+                    from OCP.BOPAlgo import BOPAlgo_Options
+
+                    # Get all solids from result and fuse them
+                    result_val = result.val()
+                    all_result_solids = []
+                    extract_solids_recursive(result_val, all_result_solids)
+
+                    if len(all_result_solids) > 1:
+                        debug_log.debug(f"Fusing {len(all_result_solids)} solids before mount cut")
+                        # Use CadQuery's fuse which handles multiple solids
+                        fused = cq.Workplane("XY").newObject([cq.Shape(all_result_solids[0])])
+                        for i, solid in enumerate(all_result_solids[1:]):
+                            try:
+                                solid_wp = cq.Workplane("XY").newObject([cq.Shape(solid)])
+                                fused = fused.union(solid_wp)
+                            except Exception as e:
+                                debug_log.debug(f"Failed to fuse solid {i+1}: {e}")
+                        result = fused
+                except Exception as e:
+                    debug_log.debug(f"Pre-cut fusion failed: {e}, proceeding with original result")
+
+                result = result.cut(mount_subtract)
+            except Exception as e:
+                debug_log.debug(f"Mount cut failed: {e}")
 
         # Add SVG elements
         for svg_elem in cfg.svg_elements:
@@ -604,8 +634,8 @@ class NameplateBuilder:
                             svg_engrave = svg_engrave.rotate(
                                 (0, 0, 0), (0, 0, 1), svg_elem.rotation
                             )
-                        # Position to start above raised elements and cut down
-                        svg_final = svg_engrave.translate((0, 0, plate_thickness - svg_elem.depth - 10 + 0.5))
+                        # Position so bottom of cut is at engrave depth, top extends above raised borders
+                        svg_final = svg_engrave.translate((0, 0, plate_thickness - svg_elem.depth))
                         result = result.cut(svg_final)
                 elif svg_elem.style == "cutout":
                     # Extend through plate and any raised elements (text, borders, other SVGs)
@@ -647,7 +677,8 @@ class NameplateBuilder:
                     )
                     qr_engrave = self._qr_generator.create_geometry(qr_engrave_config)
                     if qr_engrave is not None:
-                        qr_final = qr_engrave.translate((0, 0, plate_thickness - qr_elem.depth - 10 + 0.5))
+                        # Position so bottom of cut is at engrave depth, top extends above raised borders
+                        qr_final = qr_engrave.translate((0, 0, plate_thickness - qr_elem.depth))
                         result = result.cut(qr_final)
                 elif qr_elem.style == QRStyle.CUTOUT:
                     # Cut through entire plate
