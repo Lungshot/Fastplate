@@ -425,6 +425,7 @@ class NameplateBuilder:
                     result = result.union(text_positioned)
             elif cfg.text.style == TextStyle.ENGRAVED:
                 # Engrave into top of plate - create cutting geometry that extends beyond surface
+                # and through any raised borders
                 from .geometry.text_builder import TextBuilder, TextConfig
                 engrave_cfg = TextConfig()
                 engrave_cfg.lines = cfg.text.lines
@@ -434,12 +435,13 @@ class NameplateBuilder:
                 engrave_cfg.orientation = cfg.text.orientation
                 engrave_cfg.offset_x = cfg.text.offset_x
                 engrave_cfg.offset_y = cfg.text.offset_y
-                # Add extra depth for clean boolean cut
-                engrave_cfg.depth = cfg.text.depth + 0.5
+                # Add extra depth to cut through raised borders (up to 10mm above plate)
+                engrave_cfg.depth = cfg.text.depth + 10
                 engrave_text, _ = TextBuilder().generate(engrave_cfg)
                 if engrave_text is not None:
-                    # Position so text starts above surface and cuts down into plate
-                    text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth - 0.25))
+                    # Position so text starts well above surface (to cut through raised borders)
+                    # and cuts down to the desired engrave depth
+                    text_engraved = engrave_text.translate((0, 0, plate_thickness - cfg.text.depth - 10 + 0.5))
                     # Handle compounds (from multi-segment text)
                     try:
                         from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
@@ -477,7 +479,7 @@ class NameplateBuilder:
                 # Clear text geometry - it's now part of the combined geometry (cut into plate)
                 self._text_geometry = None
             elif cfg.text.style == TextStyle.CUTOUT:
-                # Cut completely through plate - need text as tall as plate thickness
+                # Cut completely through plate and any raised borders
                 from .geometry.text_builder import TextBuilder, TextConfig
                 cutout_cfg = TextConfig()
                 cutout_cfg.lines = cfg.text.lines
@@ -487,10 +489,11 @@ class NameplateBuilder:
                 cutout_cfg.orientation = cfg.text.orientation
                 cutout_cfg.offset_x = cfg.text.offset_x
                 cutout_cfg.offset_y = cfg.text.offset_y
-                cutout_cfg.depth = plate_thickness + 2  # Extra to ensure clean cut through
+                # Extra height to cut through raised borders (up to 10mm above plate)
+                cutout_cfg.depth = plate_thickness + 12
                 cutout_text, _ = TextBuilder().generate(cutout_cfg)
                 if cutout_text is not None:
-                    # Position to cut through entire plate (start below, extend above)
+                    # Position to cut through entire plate and raised elements
                     text_cutout = cutout_text.translate((0, 0, -1.0))
                     # Handle compounds (from multi-segment text)
                     try:
@@ -580,14 +583,31 @@ class NameplateBuilder:
                         debug_log.debug(f"SVG compound handling failed: {e}, trying regular union")
                         result = result.union(svg_final)
                 elif svg_elem.style == "engraved":
-                    svg_final = svg_positioned.translate((0, 0, plate_thickness - svg_elem.depth))
-                    result = result.cut(svg_final)
+                    # Create deeper geometry to cut through raised text/borders too
+                    svg_engrave = self._svg_importer.create_geometry(
+                        svg_elem,
+                        target_size=getattr(svg_elem, 'target_size', 20.0),
+                        depth=svg_elem.depth + 10  # Extra height for raised elements
+                    )
+                    if svg_engrave is not None:
+                        svg_engrave = svg_engrave.translate((
+                            svg_elem.position_x,
+                            svg_elem.position_y,
+                            0
+                        ))
+                        if svg_elem.rotation != 0:
+                            svg_engrave = svg_engrave.rotate(
+                                (0, 0, 0), (0, 0, 1), svg_elem.rotation
+                            )
+                        # Position to start above raised elements and cut down
+                        svg_final = svg_engrave.translate((0, 0, plate_thickness - svg_elem.depth - 10 + 0.5))
+                        result = result.cut(svg_final)
                 elif svg_elem.style == "cutout":
-                    # Extend through the plate
+                    # Extend through plate and any raised elements (text, borders, other SVGs)
                     svg_cutout = self._svg_importer.create_geometry(
                         svg_elem,
                         target_size=getattr(svg_elem, 'target_size', 20.0),
-                        depth=plate_thickness + 1
+                        depth=plate_thickness + 10  # Extra height to cut through raised elements
                     )
                     if svg_cutout is not None:
                         svg_cutout = svg_cutout.translate((

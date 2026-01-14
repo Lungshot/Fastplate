@@ -218,25 +218,27 @@ class MountGenerator:
             return None
 
         # Create holes - first hole becomes base, others union to it
+        # Extend holes well above plate surface to cut through any raised elements (text, borders, SVGs)
         holes = None
         for x, y in positions:
             try:
-                # Create main hole cylinder - starts slightly below Z=0 to ensure clean cut
+                # Create main hole cylinder - starts below Z=0 and extends above plate
+                # to cut through raised text/borders/SVGs
                 main_hole = (
                     cq.Workplane("XY")
                     .center(x, y)
                     .circle(cfg.hole_diameter / 2)
-                    .extrude(plate_thickness + 0.2)
+                    .extrude(plate_thickness + 10)  # Extra height for raised elements
                     .translate((0, 0, -0.1))
                 )
 
                 if cfg.hole_countersink:
-                    # Create countersink at top of plate
+                    # Create countersink - extends above plate for raised elements
                     countersink = (
                         cq.Workplane("XY")
                         .center(x, y)
                         .circle(cfg.countersink_diameter / 2)
-                        .extrude(cfg.countersink_depth + 0.1)
+                        .extrude(10 + cfg.countersink_depth)  # Extra height for raised elements
                         .translate((0, 0, plate_thickness - cfg.countersink_depth))
                     )
                     hole = main_hole.union(countersink)
@@ -268,12 +270,12 @@ class MountGenerator:
         for x, y in positions:
             try:
                 # Keyhole: large entry hole on top/back, narrow slot goes through
-                # Create the narrow slot that goes all the way through
+                # Create the narrow slot - extends above plate to cut through raised elements
                 slot = (
                     cq.Workplane("XY")
                     .center(x, y - cfg.keyhole_length / 2)
                     .slot2D(cfg.keyhole_length, cfg.keyhole_small_diameter)
-                    .extrude(plate_thickness + 0.2)
+                    .extrude(plate_thickness + 10)  # Extra height for raised elements
                     .translate((0, 0, -0.1))
                 )
 
@@ -360,6 +362,7 @@ class MountGenerator:
             return None
 
         # Create holes - first becomes base, others union to it
+        # Extend above plate to cut through raised elements
         holes = None
         for x, y in positions:
             try:
@@ -367,7 +370,7 @@ class MountGenerator:
                     cq.Workplane("XY")
                     .center(x, y)
                     .circle(cfg.hanging_hole_diameter / 2)
-                    .extrude(plate_thickness + 0.2)
+                    .extrude(plate_thickness + 10)  # Extra height for raised elements
                     .translate((0, 0, -0.1))
                 )
                 if holes is None:
