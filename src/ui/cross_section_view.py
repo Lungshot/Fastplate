@@ -3,8 +3,9 @@ Cross-Section View
 Displays cross-section visualization of the nameplate.
 """
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSlider, QLabel, QComboBox
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSlider, QLabel
 from PyQt5.QtCore import Qt, pyqtSignal
+from ui.widgets.slider_spin import FocusComboBox
 from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QLinearGradient, QFont
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
@@ -79,7 +80,7 @@ class CrossSectionWidget(QWidget):
 
         # Plane selector
         controls.addWidget(QLabel("Plane:"))
-        self.plane_combo = QComboBox()
+        self.plane_combo = FocusComboBox()
         self.plane_combo.addItems(["Front (XZ)", "Side (YZ)", "Top (XY)"])
         self.plane_combo.currentIndexChanged.connect(self._on_plane_changed)
         controls.addWidget(self.plane_combo)

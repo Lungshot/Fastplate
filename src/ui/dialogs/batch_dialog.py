@@ -5,11 +5,12 @@ Dialog for generating multiple nameplates from a list.
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QLabel, QTextEdit, QComboBox, QPushButton, QCheckBox,
+    QLabel, QTextEdit, QPushButton, QCheckBox,
     QDialogButtonBox, QFileDialog, QProgressBar, QLineEdit,
     QSpinBox, QMessageBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from ui.widgets.slider_spin import FocusComboBox
 from pathlib import Path
 
 
@@ -141,7 +142,7 @@ class BatchDialog(QDialog):
         output_layout.addRow("Output folder:", dir_row)
 
         # Format
-        self._format_combo = QComboBox()
+        self._format_combo = FocusComboBox()
         self._format_combo.addItems(["STL", "STEP", "3MF"])
         output_layout.addRow("File format:", self._format_combo)
 

@@ -5,10 +5,11 @@ Dialog for creating and configuring QR codes.
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QLabel, QLineEdit, QTextEdit, QComboBox, QDoubleSpinBox,
+    QLabel, QLineEdit, QTextEdit, QDoubleSpinBox,
     QPushButton, QDialogButtonBox, QFrame
 )
 from PyQt5.QtCore import Qt
+from ui.widgets.slider_spin import FocusComboBox
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor
 
 
@@ -34,7 +35,7 @@ class QRCodeDialog(QDialog):
         # Data type selector
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("Type:"))
-        self._type_combo = QComboBox()
+        self._type_combo = FocusComboBox()
         self._type_combo.addItems(["Text/URL", "Email", "Phone", "WiFi", "vCard"])
         type_layout.addWidget(self._type_combo)
         type_layout.addStretch()
@@ -67,12 +68,12 @@ class QRCodeDialog(QDialog):
         settings_layout.addRow("Depth:", self._depth_spin)
 
         # Style
-        self._style_combo = QComboBox()
+        self._style_combo = FocusComboBox()
         self._style_combo.addItems(["Raised", "Engraved", "Cutout"])
         settings_layout.addRow("Style:", self._style_combo)
 
         # Error correction
-        self._ec_combo = QComboBox()
+        self._ec_combo = FocusComboBox()
         self._ec_combo.addItems(["L - Low (7%)", "M - Medium (15%)", "Q - Quartile (25%)", "H - High (30%)"])
         self._ec_combo.setCurrentIndex(1)  # Medium default
         settings_layout.addRow("Error Correction:", self._ec_combo)

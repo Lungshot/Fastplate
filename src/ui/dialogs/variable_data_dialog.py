@@ -6,10 +6,11 @@ Dialog for importing CSV data for batch personalization.
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
-    QLineEdit, QFileDialog, QComboBox, QSpinBox, QCheckBox,
+    QLineEdit, QFileDialog, QSpinBox, QCheckBox,
     QMessageBox, QListWidget, QListWidgetItem
 )
 from PyQt5.QtCore import Qt, pyqtSignal
+from ui.widgets.slider_spin import FocusComboBox
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -56,13 +57,13 @@ class VariableDataDialog(QDialog):
         options_row.addWidget(self._has_header)
 
         options_row.addWidget(QLabel("Delimiter:"))
-        self._delimiter = QComboBox()
+        self._delimiter = FocusComboBox()
         self._delimiter.addItems(["Comma (,)", "Semicolon (;)", "Tab"])
         self._delimiter.currentIndexChanged.connect(self._reload_file)
         options_row.addWidget(self._delimiter)
 
         options_row.addWidget(QLabel("Encoding:"))
-        self._encoding = QComboBox()
+        self._encoding = FocusComboBox()
         self._encoding.addItems(["UTF-8", "Latin-1", "Windows-1252"])
         self._encoding.currentIndexChanged.connect(self._reload_file)
         options_row.addWidget(self._encoding)
@@ -114,7 +115,7 @@ class VariableDataDialog(QDialog):
         # Primary text field
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel("Primary Text:"))
-        self._primary_field = QComboBox()
+        self._primary_field = FocusComboBox()
         self._primary_field.setMinimumWidth(150)
         name_row.addWidget(self._primary_field, stretch=1)
         assigns_layout.addLayout(name_row)
@@ -122,7 +123,7 @@ class VariableDataDialog(QDialog):
         # Secondary text field
         sec_row = QHBoxLayout()
         sec_row.addWidget(QLabel("Secondary Text:"))
-        self._secondary_field = QComboBox()
+        self._secondary_field = FocusComboBox()
         self._secondary_field.setMinimumWidth(150)
         sec_row.addWidget(self._secondary_field, stretch=1)
         assigns_layout.addLayout(sec_row)

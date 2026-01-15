@@ -7,9 +7,10 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
     QLineEdit, QFileDialog, QProgressBar, QCheckBox, QMessageBox,
-    QComboBox, QSpinBox, QTextEdit
+    QSpinBox, QTextEdit
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
+from ui.widgets.slider_spin import FocusComboBox
 from pathlib import Path
 from typing import List, Dict, Any, Callable, Optional
 
@@ -113,7 +114,7 @@ class BatchExportDialog(QDialog):
         # Format
         format_row = QHBoxLayout()
         format_row.addWidget(QLabel("Format:"))
-        self._format_combo = QComboBox()
+        self._format_combo = FocusComboBox()
         self._format_combo.addItems(["STL", "STEP"])
         format_row.addWidget(self._format_combo, stretch=1)
         output_layout.addLayout(format_row)

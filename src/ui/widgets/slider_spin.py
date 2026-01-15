@@ -14,12 +14,30 @@ class FocusComboBox(QComboBox):
     """
     ComboBox that only responds to wheel events when it has focus.
     This prevents accidental value changes when scrolling over the widget.
+    Shows all items without scrolling when there are fewer than 10 items.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         # Set focus policy to StrongFocus so it can receive focus
         self.setFocusPolicy(Qt.StrongFocus)
+        # Show up to 10 items without scrolling
+        self.setMaxVisibleItems(10)
+
+    def showPopup(self):
+        """Show dropdown, ensuring all items visible when count < 10."""
+        # Dynamically adjust max visible items based on count
+        count = self.count()
+        if count <= 10:
+            self.setMaxVisibleItems(count)
+            # Force the popup view to have enough height for all items
+            item_height = self.view().sizeHintForRow(0)
+            if item_height > 0:
+                # Add some padding for borders
+                self.view().setMinimumHeight(item_height * count + 4)
+        else:
+            self.setMaxVisibleItems(10)
+        super().showPopup()
 
     def wheelEvent(self, event: QWheelEvent):
         """Only process wheel events if the combo box has focus."""

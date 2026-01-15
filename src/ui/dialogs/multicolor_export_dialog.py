@@ -5,10 +5,11 @@ Dialog for configuring multi-color/multi-part exports.
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
-    QLabel, QLineEdit, QComboBox, QPushButton, QCheckBox,
+    QLabel, QLineEdit, QPushButton, QCheckBox,
     QDialogButtonBox, QColorDialog, QFileDialog
 )
 from PyQt5.QtCore import Qt
+from ui.widgets.slider_spin import FocusComboBox
 from PyQt5.QtGui import QColor
 
 
@@ -103,7 +104,7 @@ class MultiColorExportDialog(QDialog):
         output_layout = QFormLayout(output_group)
 
         # File format
-        self._format_combo = QComboBox()
+        self._format_combo = FocusComboBox()
         self._format_combo.addItems(["STL", "STEP", "3MF"])
         output_layout.addRow("File format:", self._format_combo)
 
