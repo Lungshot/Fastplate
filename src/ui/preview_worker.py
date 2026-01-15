@@ -4,7 +4,8 @@ Background thread for geometry generation to prevent UI blocking.
 """
 
 from PyQt5.QtCore import QThread, pyqtSignal, QMutex, QMutexLocker
-from typing import Optional, Any, Dict, Tuple
+from typing import Optional, Any, Tuple
+from collections import OrderedDict
 import hashlib
 import json
 import time
@@ -18,9 +19,8 @@ class GeometryCache:
     """
 
     def __init__(self, max_entries: int = 10):
-        self._cache: Dict[str, Tuple[Any, Any, Any]] = {}
+        self._cache: OrderedDict[str, Tuple[Any, Any, Any]] = OrderedDict()
         self._max_entries = max_entries
-        self._access_order = []
 
     def _config_to_key(self, config) -> str:
         """
@@ -152,10 +152,8 @@ class GeometryCache:
         key = self._config_to_key(config)
 
         if key in self._cache:
-            # Move to end of access order (LRU)
-            if key in self._access_order:
-                self._access_order.remove(key)
-            self._access_order.append(key)
+            # Move to end of access order (LRU) - O(1) with OrderedDict
+            self._cache.move_to_end(key)
             print(f"[GeometryCache] Cache HIT for key {key[:8]}...")
             return self._cache[key]
 
@@ -166,20 +164,17 @@ class GeometryCache:
         """Cache geometry for a config."""
         key = self._config_to_key(config)
 
-        # Evict oldest entries if cache is full
-        while len(self._cache) >= self._max_entries and self._access_order:
-            oldest_key = self._access_order.pop(0)
-            self._cache.pop(oldest_key, None)
+        # Evict oldest entries if cache is full - O(1) with OrderedDict
+        while len(self._cache) >= self._max_entries:
+            oldest_key, _ = self._cache.popitem(last=False)
             print(f"[GeometryCache] Evicted old entry {oldest_key[:8]}...")
 
         self._cache[key] = (geometry, base_geom, text_geom)
-        self._access_order.append(key)
         print(f"[GeometryCache] Cached entry {key[:8]}... ({len(self._cache)} entries)")
 
     def clear(self):
         """Clear all cached entries."""
         self._cache.clear()
-        self._access_order.clear()
         print("[GeometryCache] Cache cleared")
 
     def size(self) -> int:

@@ -123,3 +123,6 @@ Thumbs.db
 *.stl
 *.step
 *.3mf
+dist_new/
+user_data/
+nul

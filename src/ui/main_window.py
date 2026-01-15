@@ -25,6 +25,13 @@ from core.export.exporter import ExportFormat
 from utils.debug_log import debug_log
 from ui.theme_manager import get_theme_manager
 
+# Geometry imports (moved to module level for performance)
+from core.geometry.text_builder import (
+    TextLineConfig, TextSegment, TextStyle, TextAlign, TextOrientation, TextEffect
+)
+from core.geometry.base_plates import PlateShape
+from core.geometry.mounts import MountType, HolePattern, MagnetSize
+
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -349,10 +356,6 @@ class MainWindow(QMainWindow):
         """Called when preview geometry is ready from background worker."""
         try:
             if self._preview_manager:
-                from core.geometry.text_builder import TextStyle
-                from core.geometry.base_plates import PlateShape
-                from core.geometry.mounts import MountType
-
                 config = self._pending_config
 
                 # Check if mounts are enabled (which modify the geometry)
@@ -405,7 +408,6 @@ class MainWindow(QMainWindow):
         
         # Get text config
         text_cfg = self._text_panel.get_config()
-        from core.geometry.text_builder import TextLineConfig, TextSegment, TextStyle, TextAlign, TextOrientation, TextEffect
 
         config.text.lines = []
         for line_data in text_cfg.get('lines', []):
@@ -458,8 +460,7 @@ class MainWindow(QMainWindow):
 
         # Get base plate config
         base_cfg = self._base_panel.get_config()
-        from core.geometry.base_plates import PlateShape
-        
+
         plate = base_cfg.get('plate', {})
         config.plate.shape = PlateShape(plate.get('shape', 'rounded_rectangle'))
         config.plate.width = plate.get('width', 120.0)
@@ -483,7 +484,6 @@ class MainWindow(QMainWindow):
         
         # Get mount config
         mount_cfg = self._mount_panel.get_config()
-        from core.geometry.mounts import MountType, HolePattern, MagnetSize
 
         config.mount.mount_type = MountType(mount_cfg.get('type', 'none'))
 
