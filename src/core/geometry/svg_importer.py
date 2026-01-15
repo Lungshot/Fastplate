@@ -571,11 +571,29 @@ class SVGImporter:
 
         return paths
 
+    def _get_path_bounds(self, points: list) -> tuple:
+        """Get bounding box of a path as (min_x, min_y, max_x, max_y)."""
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def _bounds_contains(self, outer: tuple, inner: tuple) -> bool:
+        """Check if outer bounds completely contains inner bounds."""
+        return (outer[0] <= inner[0] and outer[1] <= inner[1] and
+                outer[2] >= inner[2] and outer[3] >= inner[3])
+
+    def _get_bounds_area(self, bounds: tuple) -> float:
+        """Get area of a bounding box."""
+        return (bounds[2] - bounds[0]) * (bounds[3] - bounds[1])
+
     def create_geometry(self, element: SVGElement,
                         target_size: float = 20.0,
                         depth: Optional[float] = None) -> Optional[cq.Workplane]:
         """
         Convert SVGElement to CadQuery geometry.
+
+        Handles multi-path SVGs with even-odd fill rule by cutting inner
+        shapes from outer shapes to create proper visual appearance.
 
         Args:
             element: The SVG element to convert
@@ -604,56 +622,98 @@ class SVGImporter:
             center_x = vb[0] + svg_width / 2
             center_y = vb[1] + svg_height / 2
 
-            result = None
-
+            # Transform and clean all paths first
+            cleaned_paths = []
             for path_idx, path_points in enumerate(element.paths):
                 if len(path_points) < 3:
                     continue
 
-                # Transform points - don't apply position/rotation here since
-                # nameplate.py applies them after geometry creation
+                # Transform points
                 transformed = []
                 for x, y in path_points:
-                    # Center and scale only
                     nx = (x - center_x) * scale
                     ny = -(y - center_y) * scale  # Flip Y for CadQuery coords
-
                     transformed.append((nx, ny))
 
-                # Remove duplicate consecutive points (including end=start)
+                # Remove duplicate consecutive points
                 cleaned = [transformed[0]]
                 for i in range(1, len(transformed)):
                     px, py = cleaned[-1]
                     cx, cy = transformed[i]
-                    # Only add if significantly different from previous
                     if abs(cx - px) > 0.001 or abs(cy - py) > 0.001:
                         cleaned.append((cx, cy))
 
-                # Need at least 3 distinct points for a valid polygon
                 if len(cleaned) < 3:
                     continue
 
-                # Check if path is closed (first ~= last)
+                # If already closed, remove duplicate end point
                 is_closed = (
                     abs(cleaned[0][0] - cleaned[-1][0]) < 0.01 and
                     abs(cleaned[0][1] - cleaned[-1][1]) < 0.01
                 )
-
-                # If already closed, remove the duplicate end point
                 if is_closed and len(cleaned) > 3:
                     cleaned = cleaned[:-1]
 
-                # Create wire from points
+                cleaned_paths.append(cleaned)
+
+            if not cleaned_paths:
+                return None
+
+            # For single path, just extrude it
+            if len(cleaned_paths) == 1:
                 try:
-                    wire = cq.Workplane("XY").polyline(cleaned).close()
+                    wire = cq.Workplane("XY").polyline(cleaned_paths[0]).close()
+                    return wire.extrude(extrude_depth)
+                except Exception as e:
+                    print(f"Error creating single path geometry: {e}")
+                    return None
+
+            # For multiple paths, determine nesting and use even-odd fill rule
+            # Calculate bounds for each path
+            path_info = []
+            for idx, cleaned in enumerate(cleaned_paths):
+                bounds = self._get_path_bounds(cleaned)
+                area = self._get_bounds_area(bounds)
+                path_info.append({
+                    'idx': idx,
+                    'points': cleaned,
+                    'bounds': bounds,
+                    'area': area,
+                    'nesting_level': 0
+                })
+
+            # Sort by area (largest first)
+            path_info.sort(key=lambda p: p['area'], reverse=True)
+
+            # Determine nesting levels based on containment
+            for i, inner in enumerate(path_info):
+                for outer in path_info[:i]:  # Only check larger paths
+                    if self._bounds_contains(outer['bounds'], inner['bounds']):
+                        inner['nesting_level'] = outer['nesting_level'] + 1
+                        break  # Found the immediate parent
+
+            # Build geometry using even-odd rule:
+            # - Level 0: extrude (filled)
+            # - Level 1: cut (hole)
+            # - Level 2: extrude (filled again)
+            # - etc.
+            result = None
+
+            for pinfo in path_info:
+                try:
+                    wire = cq.Workplane("XY").polyline(pinfo['points']).close()
                     face = wire.extrude(extrude_depth)
 
                     if result is None:
                         result = face
-                    else:
+                    elif pinfo['nesting_level'] % 2 == 0:
+                        # Even nesting level: union (fill)
                         result = result.union(face)
+                    else:
+                        # Odd nesting level: cut (hole)
+                        result = result.cut(face)
                 except Exception as e:
-                    print(f"Error creating path geometry for path {path_idx}: {e}")
+                    print(f"Error creating path geometry for path {pinfo['idx']}: {e}")
                     continue
 
             return result
