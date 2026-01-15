@@ -606,7 +606,7 @@ class SVGImporter:
 
             result = None
 
-            for path_points in element.paths:
+            for path_idx, path_points in enumerate(element.paths):
                 if len(path_points) < 3:
                     continue
 
@@ -620,18 +620,32 @@ class SVGImporter:
 
                     transformed.append((nx, ny))
 
-                # Check if path is closed
+                # Remove duplicate consecutive points (including end=start)
+                cleaned = [transformed[0]]
+                for i in range(1, len(transformed)):
+                    px, py = cleaned[-1]
+                    cx, cy = transformed[i]
+                    # Only add if significantly different from previous
+                    if abs(cx - px) > 0.001 or abs(cy - py) > 0.001:
+                        cleaned.append((cx, cy))
+
+                # Need at least 3 distinct points for a valid polygon
+                if len(cleaned) < 3:
+                    continue
+
+                # Check if path is closed (first ~= last)
                 is_closed = (
-                    abs(transformed[0][0] - transformed[-1][0]) < 0.01 and
-                    abs(transformed[0][1] - transformed[-1][1]) < 0.01
+                    abs(cleaned[0][0] - cleaned[-1][0]) < 0.01 and
+                    abs(cleaned[0][1] - cleaned[-1][1]) < 0.01
                 )
 
-                if not is_closed:
-                    transformed.append(transformed[0])
+                # If already closed, remove the duplicate end point
+                if is_closed and len(cleaned) > 3:
+                    cleaned = cleaned[:-1]
 
                 # Create wire from points
                 try:
-                    wire = cq.Workplane("XY").polyline(transformed).close()
+                    wire = cq.Workplane("XY").polyline(cleaned).close()
                     face = wire.extrude(extrude_depth)
 
                     if result is None:
@@ -639,7 +653,7 @@ class SVGImporter:
                     else:
                         result = result.union(face)
                 except Exception as e:
-                    print(f"Error creating path geometry: {e}")
+                    print(f"Error creating path geometry for path {path_idx}: {e}")
                     continue
 
             return result

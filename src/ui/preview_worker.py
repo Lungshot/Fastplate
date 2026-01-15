@@ -101,19 +101,37 @@ class GeometryCache:
                 }
                 key_parts.append(('mount', mount_data))
 
-            # SVG config
-            if hasattr(config, 'svg'):
-                svg = config.svg
-                svg_data = {
-                    'enabled': getattr(svg, 'enabled', False),
-                    'path': str(getattr(svg, 'file_path', '')),
-                    'style': str(getattr(svg, 'style', '')),
-                    'size': getattr(svg, 'target_size', 0),
-                    'depth': getattr(svg, 'depth', 0),
-                    'x': getattr(svg, 'position_x', 0),
-                    'y': getattr(svg, 'position_y', 0),
-                }
-                key_parts.append(('svg', svg_data))
+            # SVG elements (icons, imported SVGs)
+            if hasattr(config, 'svg_elements') and config.svg_elements:
+                svg_list = []
+                for svg_elem in config.svg_elements:
+                    svg_data = {
+                        'name': getattr(svg_elem, 'name', ''),
+                        'style': str(getattr(svg_elem, 'style', '')),
+                        'size': getattr(svg_elem, 'target_size', 0),
+                        'depth': getattr(svg_elem, 'depth', 0),
+                        'x': getattr(svg_elem, 'position_x', 0),
+                        'y': getattr(svg_elem, 'position_y', 0),
+                        'rotation': getattr(svg_elem, 'rotation', 0),
+                        'paths_hash': hash(str(getattr(svg_elem, 'paths', []))),
+                    }
+                    svg_list.append(svg_data)
+                key_parts.append(('svg_elements', svg_list))
+
+            # QR elements
+            if hasattr(config, 'qr_elements') and config.qr_elements:
+                qr_list = []
+                for qr_elem in config.qr_elements:
+                    qr_data = {
+                        'data': getattr(qr_elem, 'data', ''),
+                        'size': getattr(qr_elem, 'size', 0),
+                        'depth': getattr(qr_elem, 'depth', 0),
+                        'style': str(getattr(qr_elem, 'style', '')),
+                        'x': getattr(qr_elem, 'position_x', 0),
+                        'y': getattr(qr_elem, 'position_y', 0),
+                    }
+                    qr_list.append(qr_data)
+                key_parts.append(('qr_elements', qr_list))
 
             # Create deterministic JSON string
             key_str = json.dumps(key_parts, sort_keys=True, default=str)

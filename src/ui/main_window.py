@@ -358,11 +358,18 @@ class MainWindow(QMainWindow):
                 # Check if mounts are enabled (which modify the geometry)
                 has_mounts = config.mount.mount_type != MountType.NONE
 
-                # For raised text WITHOUT mounts, render base and text separately with different colors
-                # When mounts are enabled, we must use combined geometry to show holes correctly
+                # Check if there are SVG elements (icons, imported SVGs, etc.)
+                # These are only included in combined geometry, not in separate base/text
+                has_svg_elements = len(config.svg_elements) > 0
+
+                # For raised text WITHOUT mounts AND without SVG elements,
+                # render base and text separately with different colors.
+                # When mounts are enabled OR SVG elements exist, we must use
+                # combined geometry to show everything correctly.
                 if (config.text.style == TextStyle.RAISED and
                     config.plate.shape != PlateShape.NONE and
-                    not has_mounts):
+                    not has_mounts and
+                    not has_svg_elements):
 
                     # Position text on top of plate for raised style
                     if text_geom is not None:
@@ -374,7 +381,8 @@ class MainWindow(QMainWindow):
 
                     self._preview_manager.update_preview_separate(base_geom, text_geom, auto_fit=self._should_auto_fit)
                 else:
-                    # For engraved/cutout, text-only, or raised with mounts - use combined geometry
+                    # For engraved/cutout, text-only, raised with mounts, or raised with SVG elements
+                    # - use combined geometry
                     self._preview_manager.update_preview(geometry, auto_fit=self._should_auto_fit)
 
                 # After first load, don't auto-fit anymore

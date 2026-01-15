@@ -582,6 +582,7 @@ class NameplateBuilder:
                 svg_elem,
                 target_size=getattr(svg_elem, 'target_size', 20.0)
             )
+
             if svg_geometry is not None:
                 # Apply position
                 svg_positioned = svg_geometry.translate((
@@ -601,6 +602,7 @@ class NameplateBuilder:
                     # Position slightly INTO the plate for overlap to ensure clean union
                     # Without overlap, CadQuery union can fail when shapes just touch
                     svg_final = svg_positioned.translate((0, 0, plate_thickness - 0.1))
+
                     # Handle compounds (from multi-path SVGs) by extracting solids
                     try:
                         svg_val = svg_final.val()
