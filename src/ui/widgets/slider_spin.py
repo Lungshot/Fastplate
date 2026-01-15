@@ -88,9 +88,15 @@ class SliderSpinBox(QWidget):
     When defer_slider_updates=True (default), the valueChanged signal is only
     emitted when the slider is released, not during dragging. This reduces
     expensive preview updates while dragging.
+
+    The 'dragging' signal emits continuously during slider drag for real-time
+    preview updates (e.g., SVG position overlay).
     """
 
     valueChanged = pyqtSignal(float)
+    dragging = pyqtSignal(float)  # Emits during slider drag for real-time preview
+    dragStarted = pyqtSignal()    # Emits when slider drag begins
+    dragEnded = pyqtSignal()      # Emits when slider drag ends
 
     def __init__(self, label: str = "", min_val: float = 0, max_val: float = 100,
                  default: float = 50, decimals: int = 1, suffix: str = "",
@@ -162,10 +168,12 @@ class SliderSpinBox(QWidget):
     def _on_slider_pressed(self):
         """Track when slider is being dragged."""
         self._slider_pressed = True
+        self.dragStarted.emit()
 
     def _on_slider_released(self):
         """Emit value when slider is released."""
         self._slider_pressed = False
+        self.dragEnded.emit()
         if self._defer_slider_updates:
             # Emit the final value now
             float_val = self._slider.value() / self._multiplier
@@ -178,7 +186,11 @@ class SliderSpinBox(QWidget):
         float_val = value / self._multiplier
         self._spinbox.setValue(float_val)
 
-        # Only emit immediately if not deferring, or if not dragging
+        # Emit dragging signal during drag for real-time preview
+        if self._slider_pressed:
+            self.dragging.emit(float_val)
+
+        # Only emit valueChanged immediately if not deferring, or if not dragging
         if not self._defer_slider_updates or not self._slider_pressed:
             self.valueChanged.emit(float_val)
 
@@ -214,6 +226,10 @@ class SliderSpinBox(QWidget):
     def default(self) -> float:
         """Get the default value."""
         return self._default
+
+    def is_dragging(self) -> bool:
+        """Check if slider is currently being dragged."""
+        return self._slider_pressed
 
 
 class ResetableComboBox(QWidget):

@@ -129,10 +129,16 @@ class SVGElementWidget(QFrame):
 
     changed = pyqtSignal()
     remove_requested = pyqtSignal(object)
+    # Signal for real-time position preview: (element_id, x, y, z, rotation)
+    position_dragging = pyqtSignal(str, float, float, float, float)
+    # Signals for drag state tracking
+    drag_started = pyqtSignal()
+    drag_ended = pyqtSignal()
 
     def __init__(self, element: SVGElement, parent=None):
         super().__init__(parent)
         self._element = element
+        self._element_id = f"svg_{id(element)}"  # Unique ID for this element
 
         self.setFrameStyle(QFrame.StyledPanel)
         self.setStyleSheet("QFrame { background-color: #353535; border-radius: 5px; }")
@@ -167,16 +173,25 @@ class SVGElementWidget(QFrame):
         # Position X
         self._pos_x_slider = SliderSpinBox("Position X:", -100, 100, 0, decimals=1, suffix=" mm")
         self._pos_x_slider.valueChanged.connect(self._on_changed)
+        self._pos_x_slider.dragging.connect(self._on_position_dragging)
+        self._pos_x_slider.dragStarted.connect(self.drag_started)
+        self._pos_x_slider.dragEnded.connect(self.drag_ended)
         layout.addWidget(self._pos_x_slider)
 
         # Position Y
         self._pos_y_slider = SliderSpinBox("Position Y:", -100, 100, 0, decimals=1, suffix=" mm")
         self._pos_y_slider.valueChanged.connect(self._on_changed)
+        self._pos_y_slider.dragging.connect(self._on_position_dragging)
+        self._pos_y_slider.dragStarted.connect(self.drag_started)
+        self._pos_y_slider.dragEnded.connect(self.drag_ended)
         layout.addWidget(self._pos_y_slider)
 
         # Rotation
         self._rotation_slider = SliderSpinBox("Rotation:", 0, 360, 0, decimals=0, suffix="°")
         self._rotation_slider.valueChanged.connect(self._on_changed)
+        self._rotation_slider.dragging.connect(self._on_position_dragging)
+        self._rotation_slider.dragStarted.connect(self.drag_started)
+        self._rotation_slider.dragEnded.connect(self.drag_ended)
         layout.addWidget(self._rotation_slider)
 
         # Depth
@@ -195,6 +210,21 @@ class SVGElementWidget(QFrame):
 
     def _on_changed(self, *args):
         self.changed.emit()
+
+    def _on_position_dragging(self, value):
+        """Emit position/rotation during drag for real-time preview."""
+        # Get current position and rotation values
+        x = self._pos_x_slider.value()
+        y = self._pos_y_slider.value()
+        rotation = self._rotation_slider.value()
+        # Z offset depends on style - for raised, it sits on top of plate
+        # This will be handled by the viewer - just emit 0 for now
+        z = 0
+        self.position_dragging.emit(self._element_id, x, y, z, rotation)
+
+    def get_element_id(self) -> str:
+        """Get the unique element ID for overlay tracking."""
+        return self._element_id
 
     def get_element(self) -> SVGElement:
         """Get the configured SVG element."""
@@ -249,6 +279,8 @@ class SVGPanel(QWidget):
     """Panel for SVG import settings."""
 
     settings_changed = pyqtSignal()
+    # Signal for real-time SVG position preview: (element_id, x, y, z, rotation)
+    svg_position_dragging = pyqtSignal(str, float, float, float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -257,6 +289,7 @@ class SVGPanel(QWidget):
         self._qr_widgets = []
         self._importer = SVGImporter()
         self._qr_generator = QRCodeGenerator()
+        self._active_drag_count = 0  # Track number of active drags
 
         self._setup_ui()
 
@@ -385,6 +418,11 @@ class SVGPanel(QWidget):
         widget = SVGElementWidget(element)
         widget.changed.connect(self._on_changed)
         widget.remove_requested.connect(self._remove_element)
+        # Connect position dragging for real-time preview
+        widget.position_dragging.connect(self.svg_position_dragging)
+        # Connect drag state tracking
+        widget.drag_started.connect(self._on_drag_started)
+        widget.drag_ended.connect(self._on_drag_ended)
 
         # Set target size if provided
         if target_size is not None:
@@ -415,9 +453,28 @@ class SVGPanel(QWidget):
     def _on_changed(self, *args):
         self.settings_changed.emit()
 
+    def _on_drag_started(self):
+        """Track when a position drag starts."""
+        self._active_drag_count += 1
+
+    def _on_drag_ended(self):
+        """Track when a position drag ends."""
+        self._active_drag_count = max(0, self._active_drag_count - 1)
+
+    def is_dragging(self) -> bool:
+        """Check if any SVG position slider is currently being dragged."""
+        return self._active_drag_count > 0
+
     def get_elements(self) -> list:
         """Get all configured SVG elements."""
         return [w.get_element() for w in self._svg_widgets]
+
+    def get_svg_widget_by_id(self, element_id: str):
+        """Get SVG widget by element ID for real-time preview."""
+        for widget in self._svg_widgets:
+            if widget.get_element_id() == element_id:
+                return widget
+        return None
 
     def get_qr_elements(self) -> list:
         """Get all configured QR code elements."""

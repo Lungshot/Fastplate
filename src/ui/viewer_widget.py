@@ -5,6 +5,7 @@ Uses PyQtGraph and OpenGL for rendering.
 """
 
 import numpy as np
+import sip
 from typing import Optional, Tuple
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QCheckBox
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -98,6 +99,10 @@ class Viewer3DWidget(QWidget):
         self._cached_text_faces = None     # Cache for text mesh refresh
         self._model_center = np.array([0.0, 0.0, 0.0])  # Center of current model
         self._model_size = 100.0      # Size of current model for camera distance
+
+        # SVG overlay system for real-time preview during drag
+        self._svg_overlay_items = {}  # id -> GLMeshItem
+        self._svg_overlay_data = {}   # id -> (vertices, faces, base_geometry)
 
         self._setup_ui()
     
@@ -565,6 +570,8 @@ class Viewer3DWidget(QWidget):
             if self._text_mesh_item is not None:
                 self._view.removeItem(self._text_mesh_item)
                 self._text_mesh_item = None
+            # Clear SVG overlays
+            self.clear_svg_overlays()
         self._geometry = None
         self._base_geometry = None
         self._text_geometry = None
@@ -572,6 +579,101 @@ class Viewer3DWidget(QWidget):
         self._cached_faces = None
         self._cached_text_vertices = None
         self._cached_text_faces = None
+
+    # --- SVG Overlay System for Real-Time Preview ---
+
+    def add_svg_overlay(self, svg_id: str, geometry, color: Tuple[float, float, float, float] = None):
+        """
+        Add or update an SVG overlay mesh for real-time preview.
+
+        Args:
+            svg_id: Unique identifier for this SVG element
+            geometry: CadQuery geometry for the SVG (at origin, no position applied)
+            color: Optional color tuple (r, g, b, a), defaults to orange highlight
+        """
+        if not PYQTGRAPH_AVAILABLE or geometry is None:
+            return
+
+        # Default highlight color for SVG overlays
+        if color is None:
+            color = (1.0, 0.6, 0.2, 0.9)  # Orange highlight
+
+        # Tessellate geometry
+        vertices, faces = self._tessellate_geometry(geometry)
+        if vertices is None or faces is None:
+            return
+
+        # Remove existing overlay if present
+        if svg_id in self._svg_overlay_items:
+            self._view.removeItem(self._svg_overlay_items[svg_id])
+
+        # Create mesh item
+        mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+        mesh_item = gl.GLMeshItem(
+            meshdata=mesh_data,
+            smooth=True,
+            shader=self._current_shader,
+            color=color,
+            drawFaces=True,
+            drawEdges=True,
+            edgeColor=(0.3, 0.3, 0.3, 0.5),
+            glOptions='opaque'
+        )
+        self._view.addItem(mesh_item)
+
+        # Store references
+        self._svg_overlay_items[svg_id] = mesh_item
+        self._svg_overlay_data[svg_id] = (vertices.copy(), faces.copy(), geometry)
+
+    def update_svg_overlay_transform(self, svg_id: str, x: float, y: float, z: float, rotation: float = 0):
+        """
+        Update the transform of an SVG overlay without rebuilding mesh.
+        This is the key method for real-time preview - it's very fast.
+
+        Args:
+            svg_id: The SVG element identifier
+            x, y, z: Translation offsets
+            rotation: Rotation around Z axis in degrees
+        """
+        if svg_id not in self._svg_overlay_items:
+            return
+
+        mesh_item = self._svg_overlay_items[svg_id]
+
+        # Guard against use-after-delete (Codex review recommendation)
+        if sip.isdeleted(mesh_item):
+            del self._svg_overlay_items[svg_id]
+            return
+
+        # Create transform matrix
+        from PyQt5.QtGui import QMatrix4x4
+        transform = QMatrix4x4()
+        transform.translate(x, y, z)
+        if rotation != 0:
+            transform.rotate(rotation, 0, 0, 1)
+
+        # Apply transform - this is instant, no geometry rebuild
+        mesh_item.setTransform(transform)
+
+    def remove_svg_overlay(self, svg_id: str):
+        """Remove a specific SVG overlay."""
+        if svg_id in self._svg_overlay_items:
+            if PYQTGRAPH_AVAILABLE:
+                self._view.removeItem(self._svg_overlay_items[svg_id])
+            del self._svg_overlay_items[svg_id]
+        if svg_id in self._svg_overlay_data:
+            del self._svg_overlay_data[svg_id]
+
+    def clear_svg_overlays(self):
+        """Remove all SVG overlays."""
+        for svg_id in list(self._svg_overlay_items.keys()):
+            self.remove_svg_overlay(svg_id)
+
+    def has_svg_overlay(self, svg_id: str) -> bool:
+        """Check if an SVG overlay exists."""
+        return svg_id in self._svg_overlay_items
+
+    # --- End SVG Overlay System ---
 
     def reset_view(self):
         """Reset to default isometric view centered on model."""
@@ -656,3 +758,25 @@ class PreviewManager:
     def clear_preview(self):
         """Clear the preview."""
         self.viewer.clear_geometry()
+
+    # --- SVG Overlay Methods for Real-Time Preview ---
+
+    def add_svg_overlay(self, svg_id: str, geometry, color=None):
+        """Add an SVG overlay for real-time preview during drag."""
+        self.viewer.add_svg_overlay(svg_id, geometry, color)
+
+    def update_svg_transform(self, svg_id: str, x: float, y: float, z: float, rotation: float = 0):
+        """Update SVG overlay position/rotation instantly without geometry rebuild."""
+        self.viewer.update_svg_overlay_transform(svg_id, x, y, z, rotation)
+
+    def remove_svg_overlay(self, svg_id: str):
+        """Remove an SVG overlay."""
+        self.viewer.remove_svg_overlay(svg_id)
+
+    def clear_svg_overlays(self):
+        """Clear all SVG overlays."""
+        self.viewer.clear_svg_overlays()
+
+    def has_svg_overlay(self, svg_id: str) -> bool:
+        """Check if an SVG overlay exists."""
+        return self.viewer.has_svg_overlay(svg_id)

@@ -20,6 +20,10 @@ class TextSegmentWidget(QFrame):
     remove_requested = pyqtSignal(object)
     move_up_requested = pyqtSignal(object)
     move_down_requested = pyqtSignal(object)
+    # Signal for real-time position preview: (segment_id, v_offset)
+    position_dragging = pyqtSignal(str, float)
+    drag_started = pyqtSignal()
+    drag_ended = pyqtSignal()
 
     # Stylesheet for the segment widget with improved visibility
     SEGMENT_STYLE = """
@@ -88,6 +92,7 @@ class TextSegmentWidget(QFrame):
         super().__init__(parent)
         self.segment_number = segment_number
         self.is_icon = False  # Track if this segment is a Nerd Font icon
+        self._segment_id = f"text_seg_{id(self)}"  # Unique ID for real-time preview
 
         self.setFrameStyle(QFrame.Box)
         self.setStyleSheet(self.SEGMENT_STYLE)
@@ -216,11 +221,23 @@ class TextSegmentWidget(QFrame):
         voffset_row.addWidget(voffset_label)
         self._voffset_slider = SliderSpinBox("", -10, 10, 0, decimals=1, suffix="mm")
         self._voffset_slider.valueChanged.connect(self._on_changed)
+        # Connect for real-time preview
+        self._voffset_slider.dragging.connect(self._on_position_dragging)
+        self._voffset_slider.dragStarted.connect(self.drag_started)
+        self._voffset_slider.dragEnded.connect(self.drag_ended)
         voffset_row.addWidget(self._voffset_slider)
         layout.addLayout(voffset_row)
 
     def _on_changed(self, *args):
         self.changed.emit()
+
+    def _on_position_dragging(self, value):
+        """Emit position during drag for real-time preview."""
+        self.position_dragging.emit(self._segment_id, value)
+
+    def get_segment_id(self) -> str:
+        """Get the unique segment ID for real-time preview."""
+        return self._segment_id
 
     def _to_uppercase(self):
         """Convert text to UPPERCASE."""
@@ -280,12 +297,17 @@ class TextLineWidget(QFrame):
 
     changed = pyqtSignal()
     remove_requested = pyqtSignal(object)
+    # Signal for real-time text position preview: (segment_id, v_offset)
+    segment_position_dragging = pyqtSignal(str, float)
+    drag_started = pyqtSignal()
+    drag_ended = pyqtSignal()
 
     def __init__(self, line_number: int = 1, parent=None):
         super().__init__(parent)
         self.line_number = line_number
         self._font_names = []
         self._segment_widgets = []
+        self._active_drag_count = 0
 
         self.setFrameStyle(QFrame.StyledPanel)
         self.setStyleSheet("QFrame { background-color: #353535; border-radius: 5px; }")
@@ -363,6 +385,10 @@ class TextLineWidget(QFrame):
         seg_widget.remove_requested.connect(self._remove_segment)
         seg_widget.move_up_requested.connect(self._move_segment_up)
         seg_widget.move_down_requested.connect(self._move_segment_down)
+        # Connect for real-time preview
+        seg_widget.position_dragging.connect(self.segment_position_dragging)
+        seg_widget.drag_started.connect(self._on_drag_started)
+        seg_widget.drag_ended.connect(self._on_drag_ended)
 
         self._segment_widgets.append(seg_widget)
         self._segments_layout.addWidget(seg_widget)
@@ -428,6 +454,20 @@ class TextLineWidget(QFrame):
 
     def _on_changed(self, *args):
         self.changed.emit()
+
+    def _on_drag_started(self):
+        """Track when a position drag starts."""
+        self._active_drag_count += 1
+        self.drag_started.emit()
+
+    def _on_drag_ended(self):
+        """Track when a position drag ends."""
+        self._active_drag_count = max(0, self._active_drag_count - 1)
+        self.drag_ended.emit()
+
+    def is_dragging(self) -> bool:
+        """Check if any segment is being dragged."""
+        return self._active_drag_count > 0
 
     def set_fonts(self, font_names: list):
         """Set available fonts for all segments."""
@@ -509,12 +549,15 @@ class TextPanel(QWidget):
     settings_changed = pyqtSignal()
     google_icon_selected = pyqtSignal(dict)  # Emitted when Google icon is selected
     font_awesome_icon_selected = pyqtSignal(dict)  # Emitted when Font Awesome icon is selected
+    # Signal for real-time text position preview: (segment_id, v_offset)
+    text_position_dragging = pyqtSignal(str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self._font_names = []
         self._line_widgets = []
+        self._active_drag_count = 0
         
         self._setup_ui()
     
@@ -664,6 +707,10 @@ class TextPanel(QWidget):
         line_widget.set_fonts(self._font_names)
         line_widget.changed.connect(self._on_changed)
         line_widget.remove_requested.connect(self._remove_line)
+        # Connect for real-time preview
+        line_widget.segment_position_dragging.connect(self.text_position_dragging)
+        line_widget.drag_started.connect(self._on_drag_started)
+        line_widget.drag_ended.connect(self._on_drag_ended)
 
         self._line_widgets.append(line_widget)
         self._lines_layout.addWidget(line_widget)
@@ -685,6 +732,18 @@ class TextPanel(QWidget):
     
     def _on_changed(self, *args):
         self.settings_changed.emit()
+
+    def _on_drag_started(self):
+        """Track when a position drag starts."""
+        self._active_drag_count += 1
+
+    def _on_drag_ended(self):
+        """Track when a position drag ends."""
+        self._active_drag_count = max(0, self._active_drag_count - 1)
+
+    def is_dragging(self) -> bool:
+        """Check if any text segment position is being dragged."""
+        return self._active_drag_count > 0
 
     def _on_effect_changed(self, effect_text: str):
         """Handle effect type change."""

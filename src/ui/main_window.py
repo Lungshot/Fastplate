@@ -291,6 +291,10 @@ class MainWindow(QMainWindow):
         self._base_panel.settings_changed.connect(self._schedule_update)
         self._mount_panel.settings_changed.connect(self._schedule_update)
         self._svg_panel.settings_changed.connect(self._schedule_update)
+        # Real-time SVG position preview during drag
+        self._svg_panel.svg_position_dragging.connect(self._on_svg_position_dragging)
+        # Real-time text position preview during drag
+        self._text_panel.text_position_dragging.connect(self._on_text_position_dragging)
 
         # Google icon selection from text panel
         self._text_panel.google_icon_selected.connect(self._on_google_icon_selected)
@@ -387,6 +391,11 @@ class MainWindow(QMainWindow):
                     # For engraved/cutout, text-only, raised with mounts, or raised with SVG elements
                     # - use combined geometry
                     self._preview_manager.update_preview(geometry, auto_fit=self._should_auto_fit)
+
+                # Clear any SVG overlays now that full geometry is ready
+                # BUT only if not currently dragging (avoid flicker mid-drag)
+                if not self._svg_panel.is_dragging():
+                    self._preview_manager.clear_svg_overlays()
 
                 # After first load, don't auto-fit anymore
                 self._should_auto_fit = False
@@ -779,6 +788,56 @@ class MainWindow(QMainWindow):
                     f"Could not import the Font Awesome icon '{name}'.\n"
                     "The icon may not contain valid path data."
                 )
+
+    def _on_svg_position_dragging(self, element_id: str, x: float, y: float, z: float, rotation: float):
+        """Handle real-time SVG position update during slider drag.
+
+        This updates the SVG overlay position instantly without full geometry rebuild.
+        """
+        if not self._preview_manager:
+            return
+
+        # Get the SVG widget to access the element
+        svg_widget = self._svg_panel.get_svg_widget_by_id(element_id)
+        if not svg_widget:
+            return
+
+        element = svg_widget.get_element()
+
+        # Get plate thickness for Z positioning (raised SVGs sit on top)
+        config = self._build_config()
+        if config.plate.shape.value == 'sweeping':
+            plate_thickness = config.sweeping.thickness
+        else:
+            plate_thickness = config.plate.thickness
+
+        # Calculate Z based on style
+        if element.style == "raised":
+            z_offset = plate_thickness - 0.1  # Slightly into plate for union
+        else:
+            z_offset = 0
+
+        # Create overlay if it doesn't exist
+        if not self._preview_manager.has_svg_overlay(element_id):
+            # Get cached geometry from nameplate builder (at origin, no position)
+            svg_geom = self._nameplate_builder._get_cached_svg_geometry(
+                element,
+                target_size=getattr(element, 'target_size', 20.0)
+            )
+            if svg_geom:
+                self._preview_manager.add_svg_overlay(element_id, svg_geom)
+
+        # Update overlay transform (this is instant)
+        self._preview_manager.update_svg_transform(element_id, x, y, z_offset, rotation)
+
+    def _on_text_position_dragging(self, segment_id: str, v_offset: float):
+        """Handle real-time text position update during slider drag.
+
+        For text, we trigger an immediate preview update with reduced debounce
+        since text geometry is complex and can't easily be transformed like SVG.
+        """
+        # Trigger immediate update (100ms debounce for responsive but not excessive updates)
+        self._update_timer.start(100)
 
     def _on_toggle_debug_logging(self, checked: bool):
         """Toggle debug logging on/off."""

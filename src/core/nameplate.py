@@ -266,12 +266,52 @@ class NameplateBuilder:
         self._text_geometry: Optional[cq.Workplane] = None
         self._combined_geometry: Optional[cq.Workplane] = None
         self._needs_rebuild = True
+
+        # SVG geometry cache - caches SVG shapes by content (not position)
+        # This dramatically speeds up position/rotation changes
+        self._svg_geometry_cache: Dict[str, cq.Workplane] = {}
     
     def set_config(self, config: NameplateConfig) -> None:
         """Set the configuration and mark for rebuild."""
         self.config = config
         self._needs_rebuild = True
-    
+
+    def _get_svg_cache_key(self, svg_elem, target_size: float, depth: float) -> str:
+        """Create cache key for SVG geometry based on content (not position)."""
+        import hashlib
+        key_parts = [
+            str(getattr(svg_elem, 'name', '')),
+            str(hash(str(getattr(svg_elem, 'paths', [])))),
+            f"size:{target_size:.2f}",
+            f"depth:{depth:.2f}",
+        ]
+        return hashlib.md5('|'.join(key_parts).encode()).hexdigest()[:16]
+
+    def _get_cached_svg_geometry(self, svg_elem, target_size: float, depth: float = None):
+        """Get cached SVG geometry or create and cache it.
+
+        Note: CadQuery's .translate()/.rotate() return NEW Workplanes with
+        transformed geometry copies, so cached geometry is safe to reuse.
+        """
+        actual_depth = depth if depth is not None else getattr(svg_elem, 'depth', 2.0)
+        cache_key = self._get_svg_cache_key(svg_elem, target_size, actual_depth)
+
+        if cache_key in self._svg_geometry_cache:
+            debug_log.debug(f"SVG cache HIT: {cache_key}")
+            return self._svg_geometry_cache[cache_key]
+
+        debug_log.debug(f"SVG cache MISS: {cache_key}, generating...")
+        geometry = self._svg_importer.create_geometry(
+            svg_elem,
+            target_size=target_size,
+            depth=actual_depth
+        )
+
+        if geometry is not None:
+            self._svg_geometry_cache[cache_key] = geometry
+
+        return geometry
+
     def build(self, config: Optional[NameplateConfig] = None) -> cq.Workplane:
         """
         Build the complete nameplate geometry.
@@ -576,12 +616,10 @@ class NameplateBuilder:
             except Exception as e:
                 debug_log.debug(f"Mount cut failed: {e}")
 
-        # Add SVG elements
+        # Add SVG elements (using cache to speed up position/rotation changes)
         for svg_elem in cfg.svg_elements:
-            svg_geometry = self._svg_importer.create_geometry(
-                svg_elem,
-                target_size=getattr(svg_elem, 'target_size', 20.0)
-            )
+            target_size = getattr(svg_elem, 'target_size', 20.0)
+            svg_geometry = self._get_cached_svg_geometry(svg_elem, target_size)
 
             if svg_geometry is not None:
                 # Apply position
@@ -621,10 +659,8 @@ class NameplateBuilder:
                         result = result.union(svg_final)
                 elif svg_elem.style == "engraved":
                     # Create deeper geometry to cut through raised text/borders too
-                    svg_engrave = self._svg_importer.create_geometry(
-                        svg_elem,
-                        target_size=getattr(svg_elem, 'target_size', 20.0),
-                        depth=svg_elem.depth + 10  # Extra height for raised elements
+                    svg_engrave = self._get_cached_svg_geometry(
+                        svg_elem, target_size, depth=svg_elem.depth + 10
                     )
                     if svg_engrave is not None:
                         svg_engrave = svg_engrave.translate((
@@ -641,10 +677,8 @@ class NameplateBuilder:
                         result = result.cut(svg_final)
                 elif svg_elem.style == "cutout":
                     # Extend through plate and any raised elements (text, borders, other SVGs)
-                    svg_cutout = self._svg_importer.create_geometry(
-                        svg_elem,
-                        target_size=getattr(svg_elem, 'target_size', 20.0),
-                        depth=plate_thickness + 10  # Extra height to cut through raised elements
+                    svg_cutout = self._get_cached_svg_geometry(
+                        svg_elem, target_size, depth=plate_thickness + 10
                     )
                     if svg_cutout is not None:
                         svg_cutout = svg_cutout.translate((

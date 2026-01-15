@@ -298,32 +298,86 @@ class TextBuilder:
         return combined, overall_bbox
 
     def _apply_effects(self, geometry: cq.Workplane, cfg: TextConfig) -> cq.Workplane:
-        """Apply text effects (bevel, rounded, outline) to the geometry."""
+        """Apply text effects (bevel, rounded, outline) to the geometry.
+
+        Handles both single solids and compound geometries by applying effects
+        to each solid individually, then recombining.
+        """
         if cfg.effect == TextEffect.NONE:
             return geometry
 
         try:
-            if cfg.effect == TextEffect.BEVEL:
-                # Apply chamfer to top edges
+            # Get the underlying shape to check if it's a compound
+            val = geometry.val()
+            shape = val.wrapped if hasattr(val, 'wrapped') else val
+
+            from OCP.TopoDS import TopoDS_Compound, TopoDS_Solid
+            from OCP.TopExp import TopExp_Explorer
+            from OCP.TopAbs import TopAbs_SOLID, TopAbs_COMPOUND
+            from OCP.BRep import BRep_Builder
+
+            # Check if it's a compound containing multiple solids
+            # Use ShapeType() comparison which is more reliable than isinstance
+            is_compound = shape.ShapeType() == TopAbs_COMPOUND
+
+            if is_compound:
+                # Extract individual solids from compound
+                solids = []
+                explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+                while explorer.More():
+                    solid = explorer.Current()
+                    solids.append(cq.Workplane("XY").newObject([cq.Shape(solid)]))
+                    explorer.Next()
+
+                if not solids:
+                    return geometry
+
+                # Apply effect to each solid
                 effect_size = min(cfg.effect_size, cfg.depth * 0.4)  # Max 40% of depth
-                if effect_size > 0.05:
-                    return geometry.edges(">Z").chamfer(effect_size)
+                processed_solids = []
 
-            elif cfg.effect == TextEffect.ROUNDED:
-                # Apply fillet to top edges
+                for solid_wp in solids:
+                    try:
+                        if cfg.effect == TextEffect.BEVEL and effect_size > 0.05:
+                            processed = solid_wp.edges(">Z").chamfer(effect_size)
+                        elif cfg.effect == TextEffect.ROUNDED and effect_size > 0.05:
+                            processed = solid_wp.edges(">Z").fillet(effect_size)
+                        elif cfg.effect == TextEffect.OUTLINE:
+                            processed = solid_wp.shell(-cfg.outline_thickness)
+                        else:
+                            processed = solid_wp
+                        processed_solids.append(processed)
+                    except Exception as e:
+                        # If effect fails on this solid, keep original
+                        processed_solids.append(solid_wp)
+
+                # Recombine processed solids into compound
+                if len(processed_solids) == 1:
+                    return processed_solids[0]
+
+                builder = BRep_Builder()
+                new_compound = TopoDS_Compound()
+                builder.MakeCompound(new_compound)
+                for proc_solid in processed_solids:
+                    try:
+                        proc_val = proc_solid.val()
+                        proc_shape = proc_val.wrapped if hasattr(proc_val, 'wrapped') else proc_val
+                        builder.Add(new_compound, proc_shape)
+                    except:
+                        pass
+
+                return cq.Workplane("XY").newObject([cq.Shape(new_compound)])
+
+            else:
+                # Single solid - apply effect directly
                 effect_size = min(cfg.effect_size, cfg.depth * 0.4)
-                if effect_size > 0.05:
-                    return geometry.edges(">Z").fillet(effect_size)
 
-            elif cfg.effect == TextEffect.OUTLINE:
-                # Create hollow/outline text by subtracting a smaller version
-                # This is complex with compounds, so we'll try a simpler approach
-                # using shell if available, otherwise just return as-is
-                try:
+                if cfg.effect == TextEffect.BEVEL and effect_size > 0.05:
+                    return geometry.edges(">Z").chamfer(effect_size)
+                elif cfg.effect == TextEffect.ROUNDED and effect_size > 0.05:
+                    return geometry.edges(">Z").fillet(effect_size)
+                elif cfg.effect == TextEffect.OUTLINE:
                     return geometry.shell(-cfg.outline_thickness)
-                except:
-                    # Shell operation not supported, return original
-                    pass
 
         except Exception as e:
             # If effect fails, return original geometry
@@ -381,8 +435,8 @@ class TextBuilder:
             if seg_obj is not None:
                 # Center segment at current position
                 seg_center_x = current_x + seg_width / 2
-                # Align to baseline (bottom of tallest segment) + vertical offset
-                y_offset = (max_height - seg_height) / 2 + seg.vertical_offset
+                # Baseline alignment: all segments align at bottom (y=0), only user offset shifts them
+                y_offset = seg.vertical_offset
                 positioned = seg_obj.translate((seg_center_x, y_offset, 0))
                 positioned_segments.append(positioned)
 
