@@ -399,6 +399,17 @@ class MainWindow(QMainWindow):
         # Request preview generation in background thread
         self._preview_worker.request_preview(config)
 
+    def _do_update_preview_no_save(self):
+        """Update preview without saving state (used after undo/redo restore)."""
+        # Build config from UI (this is fast)
+        config = self._build_config()
+
+        # Store config for use in the callback
+        self._pending_config = config
+
+        # Request preview generation in background thread
+        self._preview_worker.request_preview(config)
+
     def _on_generation_started(self):
         """Called when background generation starts."""
         self._is_generating = True
@@ -510,10 +521,18 @@ class MainWindow(QMainWindow):
         # Set flag to prevent saving this restoration as a new state
         self._is_restoring_state = True
         try:
+            # Stop any pending scheduled updates to prevent them from
+            # saving state after the restoring flag is reset
+            self._update_timer.stop()
             self._apply_config(state)
             self._update_preview()
         finally:
             self._is_restoring_state = False
+            # Stop timer again in case _apply_config triggered new scheduled updates
+            self._update_timer.stop()
+            # Now trigger a single update that won't save state
+            # (flag is already False but we do immediate update)
+            QTimer.singleShot(0, self._do_update_preview_no_save)
 
     def _update_undo_redo_state(self):
         """Update undo/redo menu action and button enabled states."""
