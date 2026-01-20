@@ -11,6 +11,8 @@ from typing import Optional, List, Tuple
 from enum import Enum
 from pathlib import Path
 
+from .shape_utils import create_compound, combine_workplanes
+
 
 class VerticalTextMode(Enum):
     """Vertical text rendering modes."""
@@ -235,33 +237,8 @@ class VerticalTextBuilder:
             if not positioned_chars:
                 return None
 
-            # Combine all characters
-            if len(positioned_chars) == 1:
-                return positioned_chars[0]
-
-            # Use compound for combining
-            from OCP.TopoDS import TopoDS_Compound
-            from OCP.BRep import BRep_Builder
-
-            all_shapes = []
-            for obj in positioned_chars:
-                try:
-                    val = obj.val()
-                    shape = val.wrapped if hasattr(val, 'wrapped') else val
-                    all_shapes.append(shape)
-                except:
-                    pass
-
-            if not all_shapes:
-                return positioned_chars[0] if positioned_chars else None
-
-            builder = BRep_Builder()
-            compound = TopoDS_Compound()
-            builder.MakeCompound(compound)
-            for shape in all_shapes:
-                builder.Add(compound, shape)
-
-            return cq.Workplane("XY").newObject([cq.Shape(compound)])
+            # Combine all characters using compound utility
+            return combine_workplanes(positioned_chars)
 
         except Exception as e:
             print(f"Error generating stacked text: {e}")
@@ -573,39 +550,7 @@ class CurvedTextBuilder:
 
     def _combine_chars(self, char_objects: List[cq.Workplane]) -> Optional[cq.Workplane]:
         """Combine character workplanes into a single compound."""
-        if not char_objects:
-            return None
-
-        if len(char_objects) == 1:
-            return char_objects[0]
-
-        try:
-            from OCP.TopoDS import TopoDS_Compound
-            from OCP.BRep import BRep_Builder
-
-            all_shapes = []
-            for obj in char_objects:
-                try:
-                    val = obj.val()
-                    shape = val.wrapped if hasattr(val, 'wrapped') else val
-                    all_shapes.append(shape)
-                except:
-                    pass
-
-            if not all_shapes:
-                return char_objects[0] if char_objects else None
-
-            builder = BRep_Builder()
-            compound = TopoDS_Compound()
-            builder.MakeCompound(compound)
-            for shape in all_shapes:
-                builder.Add(compound, shape)
-
-            return cq.Workplane("XY").newObject([cq.Shape(compound)])
-
-        except Exception as e:
-            print(f"Error combining characters: {e}")
-            return char_objects[0] if char_objects else None
+        return combine_workplanes(char_objects)
 
 
 class TextSpacingCalculator:
@@ -817,32 +762,8 @@ def create_text_with_spacing(text: str, spacing_config: TextSpacingConfig,
         if not positioned_chars:
             return None
 
-        # Combine characters
-        if len(positioned_chars) == 1:
-            return positioned_chars[0]
-
-        from OCP.TopoDS import TopoDS_Compound
-        from OCP.BRep import BRep_Builder
-
-        all_shapes = []
-        for obj in positioned_chars:
-            try:
-                val = obj.val()
-                shape = val.wrapped if hasattr(val, 'wrapped') else val
-                all_shapes.append(shape)
-            except:
-                pass
-
-        if not all_shapes:
-            return positioned_chars[0] if positioned_chars else None
-
-        builder = BRep_Builder()
-        compound = TopoDS_Compound()
-        builder.MakeCompound(compound)
-        for shape in all_shapes:
-            builder.Add(compound, shape)
-
-        return cq.Workplane("XY").newObject([cq.Shape(compound)])
+        # Combine characters using compound utility
+        return combine_workplanes(positioned_chars)
 
     except Exception as e:
         print(f"Error creating text with spacing: {e}")

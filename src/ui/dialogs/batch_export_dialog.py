@@ -4,22 +4,18 @@ Dialog for exporting multiple nameplate variations.
 """
 
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox,
-    QLineEdit, QFileDialog, QProgressBar, QCheckBox, QMessageBox,
-    QSpinBox, QTextEdit
+    QLineEdit, QFileDialog, QCheckBox, QMessageBox, QTextEdit
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
+from PyQt5.QtCore import Qt
 from ui.widgets.slider_spin import FocusComboBox
-from pathlib import Path
-from typing import List, Dict, Any, Callable, Optional
+from ui.dialogs.base_batch_dialog import BaseBatchDialog, BaseBatchWorker
+from typing import Callable, Dict, Any, Optional
 
 
-class ExportWorker(QThread):
+class ExportWorker(BaseBatchWorker):
     """Worker thread for batch export."""
-
-    progress = pyqtSignal(int, int, str)  # current, total, message
-    finished = pyqtSignal(dict)  # results
 
     def __init__(self, exporter, items, config):
         super().__init__()
@@ -36,21 +32,21 @@ class ExportWorker(QThread):
         self.progress.emit(current, total, message)
 
 
-class BatchExportDialog(QDialog):
+class BatchExportDialog(BaseBatchDialog):
     """Dialog for batch exporting multiple nameplates."""
 
     def __init__(self, generator_func: Callable[[Dict], Any], parent=None):
-        super().__init__(parent)
+        super().__init__(parent, title="Batch Export", min_width=600, min_height=500)
         self.generator_func = generator_func
         self._items = []
-        self._worker = None
+        self._base_config = None
 
-        self.setWindowTitle("Batch Export")
-        self.setMinimumSize(600, 500)
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        """Set up the dialog UI."""
+        # Initialize base UI components
+        self._setup_base_ui()
 
         # Source section
         source_group = QGroupBox("Data Source")
@@ -77,7 +73,7 @@ class BatchExportDialog(QDialog):
         csv_row.addWidget(csv_btn)
         source_layout.addLayout(csv_row)
 
-        layout.addWidget(source_group)
+        self._main_layout.addWidget(source_group)
 
         # Preview table
         preview_group = QGroupBox("Preview")
@@ -94,7 +90,7 @@ class BatchExportDialog(QDialog):
         update_btn.clicked.connect(self._update_preview)
         preview_layout.addWidget(update_btn)
 
-        layout.addWidget(preview_group)
+        self._main_layout.addWidget(preview_group)
 
         # Output settings
         output_group = QGroupBox("Output Settings")
@@ -131,39 +127,13 @@ class BatchExportDialog(QDialog):
         self._subdir_check.setChecked(True)
         output_layout.addWidget(self._subdir_check)
 
-        layout.addWidget(output_group)
+        self._main_layout.addWidget(output_group)
 
-        # Progress
-        progress_group = QGroupBox("Progress")
-        progress_layout = QVBoxLayout(progress_group)
+        # Add progress section and buttons from base class
+        self._finalize_layout()
 
-        self._progress_bar = QProgressBar()
-        self._progress_bar.setTextVisible(True)
-        progress_layout.addWidget(self._progress_bar)
-
-        self._status_label = QLabel("Ready")
-        progress_layout.addWidget(self._status_label)
-
-        layout.addWidget(progress_group)
-
-        # Buttons
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-
-        self._export_btn = QPushButton("Export")
-        self._export_btn.clicked.connect(self._start_export)
-        btn_layout.addWidget(self._export_btn)
-
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.clicked.connect(self._cancel_export)
-        self._cancel_btn.setEnabled(False)
-        btn_layout.addWidget(self._cancel_btn)
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        btn_layout.addWidget(close_btn)
-
-        layout.addLayout(btn_layout)
+    def _get_action_button_text(self) -> str:
+        return "Export"
 
     def _browse_csv(self):
         """Browse for CSV file."""
@@ -178,7 +148,7 @@ class BatchExportDialog(QDialog):
     def _load_csv(self, path: str):
         """Load data from CSV file."""
         try:
-            from core.variable_data import VariableDataImporter, preview_data
+            from core.variable_data import VariableDataImporter
 
             importer = VariableDataImporter()
             dataset = importer.import_csv(path)
@@ -241,16 +211,33 @@ class BatchExportDialog(QDialog):
                 'filename': safe_filename
             })
 
-    def _start_export(self):
-        """Start the batch export."""
+    def _validate_inputs(self) -> bool:
+        """Validate inputs before starting."""
         if not self._items:
             QMessageBox.warning(self, "No Items", "Please enter some names first.")
-            return
+            return False
 
         if not self._output_dir.text():
             QMessageBox.warning(self, "No Output", "Please select an output directory.")
-            return
+            return False
 
+        return True
+
+    def _get_total_items(self) -> int:
+        return len(self._items)
+
+    def _get_base_config(self) -> dict:
+        """Get the base configuration."""
+        if self._base_config:
+            return self._base_config.copy()
+        return {'text': {'lines': [{'segments': [{'content': ''}]}]}}
+
+    def set_base_config(self, config: dict):
+        """Set the base configuration to use for all exports."""
+        self._base_config = config
+
+    def _create_worker(self) -> Optional[ExportWorker]:
+        """Create the export worker."""
         # Import here to avoid circular imports
         from core.batch_export import BatchExporter, BatchExportConfig, ExportItem
 
@@ -263,7 +250,8 @@ class BatchExportDialog(QDialog):
             # Update text in config
             if 'text' in config and 'lines' in config['text']:
                 if config['text']['lines']:
-                    config['text']['lines'][0]['segments'][0]['content'] = item['name']
+                    if config['text']['lines'][0].get('segments'):
+                        config['text']['lines'][0]['segments'][0]['content'] = item['name']
 
             export_items.append(ExportItem(
                 name=item['name'],
@@ -281,58 +269,10 @@ class BatchExportDialog(QDialog):
 
         # Create exporter and worker
         exporter = BatchExporter(self.generator_func)
+        return ExportWorker(exporter, export_items, batch_config)
 
-        self._worker = ExportWorker(exporter, export_items, batch_config)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished.connect(self._on_finished)
-
-        # Update UI
-        self._export_btn.setEnabled(False)
-        self._cancel_btn.setEnabled(True)
-        self._progress_bar.setMaximum(len(export_items))
-        self._progress_bar.setValue(0)
-
-        self._worker.start()
-
-    def _get_base_config(self) -> dict:
-        """Get the base configuration from the main window."""
-        # This should be overridden or connected to the main window
-        return {
-            'text': {
-                'lines': [{'segments': [{'content': ''}]}]
-            }
-        }
-
-    def set_base_config(self, config: dict):
-        """Set the base configuration to use for all exports."""
-        self._base_config = config
-
-    def _get_base_config(self) -> dict:
-        """Get the base configuration."""
-        if hasattr(self, '_base_config'):
-            return self._base_config.copy()
-        return {'text': {'lines': [{'segments': [{'content': ''}]}]}}
-
-    def _cancel_export(self):
-        """Cancel the export."""
-        if self._worker:
-            # Signal cancellation through the exporter
-            pass  # Worker will check cancellation
-
-        self._status_label.setText("Cancelled")
-        self._export_btn.setEnabled(True)
-        self._cancel_btn.setEnabled(False)
-
-    def _on_progress(self, current, total, message):
-        """Handle progress update."""
-        self._progress_bar.setValue(current)
-        self._status_label.setText(message)
-
-    def _on_finished(self, results: dict):
+    def _on_operation_finished(self, results: dict):
         """Handle export completion."""
-        self._export_btn.setEnabled(True)
-        self._cancel_btn.setEnabled(False)
-
         exported = len(results.get('exported', []))
         failed = len(results.get('failed', []))
 

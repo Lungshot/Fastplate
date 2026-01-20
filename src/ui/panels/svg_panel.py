@@ -20,6 +20,8 @@ class QRElementWidget(QFrame):
 
     changed = pyqtSignal()
     remove_requested = pyqtSignal(object)
+    # Signal for real-time preview during slider drag
+    slider_dragging = pyqtSignal()
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
@@ -52,21 +54,25 @@ class QRElementWidget(QFrame):
         # Size
         self._size_slider = SliderSpinBox("Size:", 5, 100, config.get('size', 20), decimals=1, suffix=" mm")
         self._size_slider.valueChanged.connect(self._on_changed)
+        self._size_slider.dragging.connect(self._on_slider_dragging)
         layout.addWidget(self._size_slider)
 
         # Position X
         self._pos_x_slider = SliderSpinBox("Position X:", -100, 100, config.get('position_x', 0), decimals=1, suffix=" mm")
         self._pos_x_slider.valueChanged.connect(self._on_changed)
+        self._pos_x_slider.dragging.connect(self._on_slider_dragging)
         layout.addWidget(self._pos_x_slider)
 
         # Position Y
         self._pos_y_slider = SliderSpinBox("Position Y:", -100, 100, config.get('position_y', 0), decimals=1, suffix=" mm")
         self._pos_y_slider.valueChanged.connect(self._on_changed)
+        self._pos_y_slider.dragging.connect(self._on_slider_dragging)
         layout.addWidget(self._pos_y_slider)
 
         # Depth
         self._depth_slider = SliderSpinBox("Depth:", 0.5, 10, config.get('depth', 1), decimals=1, suffix=" mm")
         self._depth_slider.valueChanged.connect(self._on_changed)
+        self._depth_slider.dragging.connect(self._on_slider_dragging)
         layout.addWidget(self._depth_slider)
 
         # Style
@@ -82,6 +88,10 @@ class QRElementWidget(QFrame):
 
     def _on_changed(self, *args):
         self.changed.emit()
+
+    def _on_slider_dragging(self, value):
+        """Emit slider_dragging for real-time preview during slider drag."""
+        self.slider_dragging.emit()
 
     def get_qr_config(self) -> QRConfig:
         """Get QRConfig object for geometry generation."""
@@ -134,6 +144,8 @@ class SVGElementWidget(QFrame):
     # Signals for drag state tracking
     drag_started = pyqtSignal()
     drag_ended = pyqtSignal()
+    # Signal for real-time preview during size/depth slider drag
+    slider_dragging = pyqtSignal()
 
     def __init__(self, element: SVGElement, parent=None):
         super().__init__(parent)
@@ -168,6 +180,7 @@ class SVGElementWidget(QFrame):
         # Target size
         self._size_slider = SliderSpinBox("Size:", 5, 100, 20, decimals=1, suffix=" mm")
         self._size_slider.valueChanged.connect(self._on_changed)
+        self._size_slider.dragging.connect(self._on_slider_dragging)
         layout.addWidget(self._size_slider)
 
         # Position X
@@ -197,6 +210,7 @@ class SVGElementWidget(QFrame):
         # Depth
         self._depth_slider = SliderSpinBox("Depth:", 0.5, 10, 2, decimals=1, suffix=" mm")
         self._depth_slider.valueChanged.connect(self._on_changed)
+        self._depth_slider.dragging.connect(self._on_slider_dragging)
         layout.addWidget(self._depth_slider)
 
         # Style
@@ -210,6 +224,10 @@ class SVGElementWidget(QFrame):
 
     def _on_changed(self, *args):
         self.changed.emit()
+
+    def _on_slider_dragging(self, value):
+        """Emit slider_dragging for real-time preview during size/depth drag."""
+        self.slider_dragging.emit()
 
     def _on_position_dragging(self, value):
         """Emit position/rotation during drag for real-time preview."""
@@ -281,6 +299,8 @@ class SVGPanel(QWidget):
     settings_changed = pyqtSignal()
     # Signal for real-time SVG position preview: (element_id, x, y, z, rotation)
     svg_position_dragging = pyqtSignal(str, float, float, float, float)
+    # Signal for real-time preview during any slider drag (size, depth)
+    slider_dragging = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -383,6 +403,8 @@ class SVGPanel(QWidget):
         widget = QRElementWidget(config)
         widget.changed.connect(self._on_changed)
         widget.remove_requested.connect(self._remove_qr_element)
+        # Connect slider dragging for real-time preview
+        widget.slider_dragging.connect(self.slider_dragging)
 
         self._qr_widgets.append(widget)
         self._elements_layout.addWidget(widget)
@@ -423,6 +445,8 @@ class SVGPanel(QWidget):
         # Connect drag state tracking
         widget.drag_started.connect(self._on_drag_started)
         widget.drag_ended.connect(self._on_drag_ended)
+        # Connect slider dragging for real-time preview (size, depth)
+        widget.slider_dragging.connect(self.slider_dragging)
 
         # Set target size if provided
         if target_size is not None:

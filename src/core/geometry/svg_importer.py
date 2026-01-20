@@ -34,6 +34,51 @@ class SVGElement:
     height: float = 0.0
     viewbox: Tuple[float, float, float, float] = (0, 0, 100, 100)
 
+    # Target size for scaling
+    target_size: float = 20.0
+
+    def to_dict(self) -> dict:
+        """Serialize SVGElement to a dictionary."""
+        return {
+            'name': self.name,
+            'paths': self.paths,
+            'position_x': self.position_x,
+            'position_y': self.position_y,
+            'rotation': self.rotation,
+            'scale_x': self.scale_x,
+            'scale_y': self.scale_y,
+            'depth': self.depth,
+            'style': self.style,
+            'width': self.width,
+            'height': self.height,
+            'viewbox': list(self.viewbox),
+            'target_size': self.target_size,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SVGElement':
+        """Deserialize SVGElement from a dictionary."""
+        viewbox = data.get('viewbox', (0, 0, 100, 100))
+        if isinstance(viewbox, list):
+            viewbox = tuple(viewbox)
+
+        elem = cls(
+            name=data.get('name', 'SVG Element'),
+            paths=data.get('paths', []),
+            position_x=data.get('position_x', 0.0),
+            position_y=data.get('position_y', 0.0),
+            rotation=data.get('rotation', 0.0),
+            scale_x=data.get('scale_x', 1.0),
+            scale_y=data.get('scale_y', 1.0),
+            depth=data.get('depth', 2.0),
+            style=data.get('style', 'raised'),
+            width=data.get('width', 0.0),
+            height=data.get('height', 0.0),
+            viewbox=viewbox,
+        )
+        elem.target_size = data.get('target_size', 20.0)
+        return elem
+
 
 class SVGPathParser:
     """

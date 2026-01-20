@@ -41,6 +41,43 @@ class BorderConfig:
     pattern_size: float = 3.0    # mm - size of pattern elements
     pattern_spacing: float = 2.0 # mm - spacing between elements
 
+    def to_dict(self) -> dict:
+        """Serialize BorderConfig to a dictionary."""
+        return {
+            'enabled': self.enabled,
+            'style': self.style.value,
+            'width': self.width,
+            'height': self.height,
+            'offset': self.offset,
+            'corner_style': self.corner_style,
+            'corner_radius': self.corner_radius,
+            'double_gap': self.double_gap,
+            'double_inner_width': self.double_inner_width,
+            'pattern_size': self.pattern_size,
+            'pattern_spacing': self.pattern_spacing,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'BorderConfig':
+        """Deserialize BorderConfig from a dictionary."""
+        style = data.get('style', 'raised')
+        if isinstance(style, str):
+            style = BorderStyle(style)
+
+        return cls(
+            enabled=data.get('enabled', False),
+            style=style,
+            width=data.get('width', 3.0),
+            height=data.get('height', 1.5),
+            offset=data.get('offset', 2.0),
+            corner_style=data.get('corner_style', 'rounded'),
+            corner_radius=data.get('corner_radius', 3.0),
+            double_gap=data.get('double_gap', 2.0),
+            double_inner_width=data.get('double_inner_width', 1.5),
+            pattern_size=data.get('pattern_size', 3.0),
+            pattern_spacing=data.get('pattern_spacing', 2.0),
+        )
+
 
 class BorderGenerator:
     """

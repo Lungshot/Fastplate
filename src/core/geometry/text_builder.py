@@ -9,12 +9,15 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 from pathlib import Path
 
+from .shape_utils import create_compound, combine_workplanes
+
 
 class TextStyle(Enum):
     """Text extrusion styles."""
     RAISED = "raised"       # Text protrudes above base
     ENGRAVED = "engraved"   # Text is cut into base (debossed)
     CUTOUT = "cutout"       # Text cuts through entirely
+    SWEEPING = "sweeping"   # Text wrapped around cylindrical surface (like OpenSCAD rotate_extrude)
 
 
 class TextAlign(Enum):
@@ -68,6 +71,37 @@ class TextSegment:
             return 'italic'
         return 'regular'
 
+    def to_dict(self) -> dict:
+        """Serialize TextSegment to a dictionary."""
+        return {
+            'content': self.content,
+            'font_family': self.font_family,
+            'font_path': str(self.font_path) if self.font_path else None,
+            'font_style': self.font_style,
+            'font_size': self.font_size,
+            'letter_spacing': self.letter_spacing,
+            'vertical_offset': self.vertical_offset,
+            'is_icon': self.is_icon,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'TextSegment':
+        """Deserialize TextSegment from a dictionary."""
+        font_path = data.get('font_path')
+        if font_path:
+            font_path = Path(font_path)
+
+        return cls(
+            content=data.get('content', ''),
+            font_family=data.get('font_family', 'Arial'),
+            font_path=font_path,
+            font_style=data.get('font_style', 'Regular'),
+            font_size=data.get('font_size', 12.0),
+            letter_spacing=data.get('letter_spacing', 0.0),
+            vertical_offset=data.get('vertical_offset', 0.0),
+            is_icon=data.get('is_icon', False),
+        )
+
 
 @dataclass
 class TextLineConfig:
@@ -117,6 +151,39 @@ class TextLineConfig:
             return any(s.content.strip() for s in self.segments)
         return bool(self.content.strip())
 
+    def to_dict(self) -> dict:
+        """Serialize TextLineConfig to a dictionary."""
+        return {
+            'segments': [seg.to_dict() for seg in self.segments],
+            'segment_gap': self.segment_gap,
+            'content': self.content,
+            'font_family': self.font_family,
+            'font_path': str(self.font_path) if self.font_path else None,
+            'font_style': self.font_style,
+            'font_size': self.font_size,
+            'letter_spacing': self.letter_spacing,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'TextLineConfig':
+        """Deserialize TextLineConfig from a dictionary."""
+        segments = [TextSegment.from_dict(s) for s in data.get('segments', [])]
+
+        font_path = data.get('font_path')
+        if font_path:
+            font_path = Path(font_path)
+
+        return cls(
+            segments=segments,
+            segment_gap=data.get('segment_gap', 2.0),
+            content=data.get('content', ''),
+            font_family=data.get('font_family', 'Arial'),
+            font_path=font_path,
+            font_style=data.get('font_style', 'Regular'),
+            font_size=data.get('font_size', 12.0),
+            letter_spacing=data.get('letter_spacing', 0.0),
+        )
+
 
 @dataclass
 class TextConfig:
@@ -145,7 +212,18 @@ class TextConfig:
     effect: TextEffect = TextEffect.NONE
     effect_size: float = 0.3     # mm - size of bevel/fillet/outline
     outline_thickness: float = 1.0  # mm - thickness for outline mode
-    
+
+    # Arc/Sweeping text settings (used when style=SWEEPING or arc_enabled=True)
+    arc_enabled: bool = False
+    arc_radius: float = 50.0     # mm - radius of the text arc
+    arc_angle: float = 180.0     # degrees - maximum angle the text can span
+    arc_direction: str = "counterclockwise"  # counterclockwise or clockwise
+
+    # Sweeping text specific settings (like OpenSCAD rotate_extrude)
+    sweep_radius: float = 13.0   # mm - distance from center axis (text_excenter in OpenSCAD)
+    sweep_angle: float = 65.0    # degrees - angle to sweep (cutangle in OpenSCAD)
+    sweep_direction: str = "up"  # "up" = text top is highest, "down" = text bottom is highest
+
     def add_line(self, content: str = "", **kwargs) -> 'TextConfig':
         """Add a new text line."""
         line = TextLineConfig(content=content, **kwargs)
@@ -157,6 +235,80 @@ class TextConfig:
         if 0 <= index < len(self.lines):
             return self.lines[index]
         return None
+
+    def to_dict(self) -> dict:
+        """Serialize TextConfig to a dictionary."""
+        return {
+            'lines': [line.to_dict() for line in self.lines],
+            'style': self.style.value,
+            'depth': self.depth,
+            'halign': self.halign.value,
+            'valign': self.valign.value,
+            'orientation': self.orientation.value,
+            'line_spacing': self.line_spacing,
+            'offset_x': self.offset_x,
+            'offset_y': self.offset_y,
+            'effect': self.effect.value,
+            'effect_size': self.effect_size,
+            'outline_thickness': self.outline_thickness,
+            'arc_enabled': self.arc_enabled,
+            'arc_radius': self.arc_radius,
+            'arc_angle': self.arc_angle,
+            'arc_direction': self.arc_direction,
+            'sweep_radius': self.sweep_radius,
+            'sweep_angle': self.sweep_angle,
+            'sweep_direction': self.sweep_direction,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'TextConfig':
+        """Deserialize TextConfig from a dictionary."""
+        lines = [TextLineConfig.from_dict(l) for l in data.get('lines', [])]
+        if not lines:
+            lines = [TextLineConfig()]
+
+        # Handle enum conversions
+        style = data.get('style', 'raised')
+        if isinstance(style, str):
+            style = TextStyle(style)
+
+        halign = data.get('halign', 'center')
+        if isinstance(halign, str):
+            halign = TextAlign(halign)
+
+        valign = data.get('valign', 'center')
+        if isinstance(valign, str):
+            valign = TextVAlign(valign)
+
+        orientation = data.get('orientation', 'horizontal')
+        if isinstance(orientation, str):
+            orientation = TextOrientation(orientation)
+
+        effect = data.get('effect', 'none')
+        if isinstance(effect, str):
+            effect = TextEffect(effect)
+
+        return cls(
+            lines=lines,
+            style=style,
+            depth=data.get('depth', 2.0),
+            halign=halign,
+            valign=valign,
+            orientation=orientation,
+            line_spacing=data.get('line_spacing', 1.2),
+            offset_x=data.get('offset_x', 0.0),
+            offset_y=data.get('offset_y', 0.0),
+            effect=effect,
+            effect_size=data.get('effect_size', 0.3),
+            outline_thickness=data.get('outline_thickness', 1.0),
+            arc_enabled=data.get('arc_enabled', False),
+            arc_radius=data.get('arc_radius', 50.0),
+            arc_angle=data.get('arc_angle', 180.0),
+            arc_direction=data.get('arc_direction', 'counterclockwise'),
+            sweep_radius=data.get('sweep_radius', 13.0),
+            sweep_angle=data.get('sweep_angle', 65.0),
+            sweep_direction=data.get('sweep_direction', 'up'),
+        )
 
 
 class TextBuilder:
@@ -170,10 +322,10 @@ class TextBuilder:
     def generate(self, config: Optional[TextConfig] = None) -> Tuple[cq.Workplane, Tuple[float, float, float, float]]:
         """
         Generate 3D text geometry.
-        
+
         Args:
             config: Optional config override
-            
+
         Returns:
             Tuple of (CadQuery Workplane with text solid, bounding box (minx, miny, maxx, maxy))
         """
@@ -182,6 +334,10 @@ class TextBuilder:
         if not cfg.lines or all(not line.has_content() for line in cfg.lines):
             # Return empty workplane and zero bbox if no text
             return cq.Workplane("XY"), (0, 0, 0, 0)
+
+        # If arc/sweeping text is enabled, use the SweepingTextBuilder
+        if cfg.arc_enabled:
+            return self._generate_arc_text(cfg)
 
         # Filter to non-empty lines
         active_lines = [line for line in cfg.lines if line.has_content()]
@@ -249,36 +405,9 @@ class TextBuilder:
                 current_y -= gaps[i]
         
         # Combine all lines using compound to avoid union failures
-        if len(positioned_objects) == 1:
-            combined = positioned_objects[0]
-        else:
-            # Collect all solids from all positioned objects
-            all_solids = []
-            for obj in positioned_objects:
-                try:
-                    solids = obj.solids().vals()
-                    all_solids.extend(solids)
-                except:
-                    try:
-                        # Try getting single solid
-                        all_solids.append(obj.val())
-                    except:
-                        pass
-
-            if all_solids:
-                # Create compound from all solids
-                from OCP.TopoDS import TopoDS_Compound
-                from OCP.BRep import BRep_Builder
-                builder = BRep_Builder()
-                compound = TopoDS_Compound()
-                builder.MakeCompound(compound)
-                for solid in all_solids:
-                    # Extract OCP shape from CadQuery object
-                    shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
-                    builder.Add(compound, shape)
-                combined = cq.Workplane("XY").newObject([compound])
-            else:
-                combined = positioned_objects[0]
+        combined = combine_workplanes(positioned_objects)
+        if combined is None:
+            return cq.Workplane("XY"), (0, 0, 0, 0)
         
         # Apply vertical orientation if specified (rotate 90 degrees around Z)
         if cfg.orientation == TextOrientation.VERTICAL:
@@ -296,6 +425,30 @@ class TextBuilder:
             overall_bbox = (-50, -15, 50, 15)
 
         return combined, overall_bbox
+
+    def _generate_arc_text(self, cfg: TextConfig) -> Tuple[cq.Workplane, Tuple[float, float, float, float]]:
+        """Generate text that curves along an arc using SweepingTextBuilder."""
+        from .sweeping_text import SweepingTextBuilder, SweepingTextConfig
+
+        print(f"[ArcText] Generating arc text: radius={cfg.arc_radius}, angle={cfg.arc_angle}, direction={cfg.arc_direction}")
+
+        # Build sweeping text config from text config
+        sweep_cfg = SweepingTextConfig(
+            curve_radius=cfg.arc_radius,
+            curve_angle=cfg.arc_angle,
+            text_config=cfg,
+            text_on_outside=(cfg.arc_direction == "counterclockwise"),
+        )
+
+        builder = SweepingTextBuilder(sweep_cfg)
+        geometry, bbox = builder.generate()
+
+        print(f"[ArcText] Generated geometry: {geometry is not None}, bbox={bbox}")
+
+        # Apply text effects if any
+        geometry = self._apply_effects(geometry, cfg)
+
+        return geometry, bbox
 
     def _apply_effects(self, geometry: cq.Workplane, cfg: TextConfig) -> cq.Workplane:
         """Apply text effects (bevel, rounded, outline) to the geometry.
@@ -445,39 +598,10 @@ class TextBuilder:
         if not positioned_segments:
             return None, (0, 0, 0, 0)
 
-        # Combine all segments using compound
-        if len(positioned_segments) == 1:
-            combined = positioned_segments[0]
-        else:
-            # Collect all shapes from positioned segments
-            from OCP.TopoDS import TopoDS_Compound
-            from OCP.BRep import BRep_Builder
-
-            all_shapes = []
-            for i, obj in enumerate(positioned_segments):
-                try:
-                    # Get the underlying shape value
-                    val = obj.val()
-                    if hasattr(val, 'wrapped'):
-                        shape = val.wrapped
-                    else:
-                        shape = val
-                    all_shapes.append(shape)
-                    print(f"[TextBuilder] Segment {i}: got shape type {type(shape).__name__}")
-                except Exception as e:
-                    print(f"[TextBuilder] Segment {i}: failed to get shape: {e}")
-
-            if all_shapes:
-                print(f"[TextBuilder] Combining {len(all_shapes)} shapes into compound")
-                builder = BRep_Builder()
-                compound = TopoDS_Compound()
-                builder.MakeCompound(compound)
-                for shape in all_shapes:
-                    builder.Add(compound, shape)
-                combined = cq.Workplane("XY").newObject([cq.Shape(compound)])
-            else:
-                print("[TextBuilder] WARNING: No shapes found, using first segment only")
-                combined = positioned_segments[0]
+        # Combine all segments using compound utility
+        combined = combine_workplanes(positioned_segments)
+        if combined is None:
+            return None, (0, 0, 0, 0)
 
         # Calculate bounding box
         try:
@@ -593,34 +717,10 @@ class TextBuilder:
             if not positioned_chars:
                 return None, (0, 0, 0, 0)
 
-            # Combine all characters using compound to avoid union failures
-            if len(positioned_chars) == 1:
-                combined = positioned_chars[0]
-            else:
-                all_solids = []
-                for obj in positioned_chars:
-                    try:
-                        solids = obj.solids().vals()
-                        all_solids.extend(solids)
-                    except:
-                        try:
-                            all_solids.append(obj.val())
-                        except:
-                            pass
-
-                if all_solids:
-                    from OCP.TopoDS import TopoDS_Compound
-                    from OCP.BRep import BRep_Builder
-                    builder = BRep_Builder()
-                    compound = TopoDS_Compound()
-                    builder.MakeCompound(compound)
-                    for solid in all_solids:
-                        # Extract OCP shape from CadQuery object
-                        shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
-                        builder.Add(compound, shape)
-                    combined = cq.Workplane("XY").newObject([compound])
-                else:
-                    combined = positioned_chars[0]
+            # Combine all characters using compound utility
+            combined = combine_workplanes(positioned_chars)
+            if combined is None:
+                return None, (0, 0, 0, 0)
 
             # Calculate bounding box
             try:

@@ -31,6 +31,37 @@ class SweepingConfig:
     pedestal_height: float = 5.0  # mm - height of pedestal base
     pedestal_width: float = 20.0  # mm - width of pedestal
 
+    def to_dict(self) -> dict:
+        """Serialize SweepingConfig to a dictionary."""
+        return {
+            'width': self.width,
+            'height': self.height,
+            'thickness': self.thickness,
+            'curve_angle': self.curve_angle,
+            'curve_radius': self.curve_radius,
+            'eccentricity': self.eccentricity,
+            'base_type': self.base_type,
+            'corner_radius': self.corner_radius,
+            'pedestal_height': self.pedestal_height,
+            'pedestal_width': self.pedestal_width,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SweepingConfig':
+        """Deserialize SweepingConfig from a dictionary."""
+        return cls(
+            width=data.get('width', 100.0),
+            height=data.get('height', 30.0),
+            thickness=data.get('thickness', 3.0),
+            curve_angle=data.get('curve_angle', 45.0),
+            curve_radius=data.get('curve_radius', 80.0),
+            eccentricity=data.get('eccentricity', 0.0),
+            base_type=data.get('base_type', 'pedestal'),
+            corner_radius=data.get('corner_radius', 3.0),
+            pedestal_height=data.get('pedestal_height', 5.0),
+            pedestal_width=data.get('pedestal_width', 20.0),
+        )
+
 
 class SweepingPlateGenerator:
     """

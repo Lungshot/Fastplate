@@ -16,11 +16,20 @@ from core.geometry.svg_importer import SVGImporter
 
 class BasePlatePanel(QWidget):
     """Panel for base plate settings."""
-    
+
     settings_changed = pyqtSignal()
-    
+    # Signal for real-time preview during slider drag
+    dimension_dragging = pyqtSignal()
+    # Signal for real-time scale preview: (width, height, thickness)
+    baseplate_scale_dragging = pyqtSignal(float, float, float)
+    # Signals for drag start/end to manage overlay lifecycle
+    dimension_drag_started = pyqtSignal()
+    dimension_drag_ended = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._active_drag_count = 0
+        self._is_dimension_dragging = False
         self._setup_ui()
     
     def _setup_ui(self):
@@ -105,16 +114,25 @@ class BasePlatePanel(QWidget):
         # Width
         self._width_slider = SliderSpinBox("Width:", 20, 300, 120, decimals=1, suffix=" mm")
         self._width_slider.valueChanged.connect(self._on_changed)
+        self._width_slider.dragging.connect(self._on_scale_dimension_dragging)
+        self._width_slider.dragStarted.connect(self._on_dimension_drag_started)
+        self._width_slider.dragEnded.connect(self._on_dimension_drag_ended)
         dims_layout.addWidget(self._width_slider)
-        
+
         # Height
         self._height_slider = SliderSpinBox("Height:", 10, 150, 35, decimals=1, suffix=" mm")
         self._height_slider.valueChanged.connect(self._on_changed)
+        self._height_slider.dragging.connect(self._on_scale_dimension_dragging)
+        self._height_slider.dragStarted.connect(self._on_dimension_drag_started)
+        self._height_slider.dragEnded.connect(self._on_dimension_drag_ended)
         dims_layout.addWidget(self._height_slider)
-        
+
         # Thickness
         self._thickness_slider = SliderSpinBox("Thickness:", 1, 15, 4, decimals=1, suffix=" mm")
         self._thickness_slider.valueChanged.connect(self._on_changed)
+        self._thickness_slider.dragging.connect(self._on_scale_dimension_dragging)
+        self._thickness_slider.dragStarted.connect(self._on_dimension_drag_started)
+        self._thickness_slider.dragEnded.connect(self._on_dimension_drag_ended)
         dims_layout.addWidget(self._thickness_slider)
         
         layout.addWidget(dims_group)
@@ -126,6 +144,7 @@ class BasePlatePanel(QWidget):
         # Corner radius (for rounded shapes)
         self._corner_slider = SliderSpinBox("Corner Radius:", 0, 30, 5, decimals=1, suffix=" mm")
         self._corner_slider.valueChanged.connect(self._on_changed)
+        self._corner_slider.dragging.connect(self._on_dimension_dragging)
         options_layout.addWidget(self._corner_slider)
         
         layout.addWidget(self._options_group)
@@ -136,10 +155,12 @@ class BasePlatePanel(QWidget):
         
         self._curve_angle_slider = SliderSpinBox("Curve Angle:", 0, 90, 45, decimals=0, suffix="°")
         self._curve_angle_slider.valueChanged.connect(self._on_changed)
+        self._curve_angle_slider.dragging.connect(self._on_dimension_dragging)
         sweep_layout.addWidget(self._curve_angle_slider)
-        
+
         self._curve_radius_slider = SliderSpinBox("Curve Radius:", 30, 200, 80, decimals=0, suffix=" mm")
         self._curve_radius_slider.valueChanged.connect(self._on_changed)
+        self._curve_radius_slider.dragging.connect(self._on_dimension_dragging)
         sweep_layout.addWidget(self._curve_radius_slider)
         
         base_row = QHBoxLayout()
@@ -159,18 +180,22 @@ class BasePlatePanel(QWidget):
         
         self._padding_top = SliderSpinBox("Top:", 0, 30, 5, decimals=1, suffix=" mm")
         self._padding_top.valueChanged.connect(self._on_changed)
+        self._padding_top.dragging.connect(self._on_dimension_dragging)
         padding_layout.addWidget(self._padding_top)
-        
+
         self._padding_bottom = SliderSpinBox("Bottom:", 0, 30, 5, decimals=1, suffix=" mm")
         self._padding_bottom.valueChanged.connect(self._on_changed)
+        self._padding_bottom.dragging.connect(self._on_dimension_dragging)
         padding_layout.addWidget(self._padding_bottom)
-        
+
         self._padding_left = SliderSpinBox("Left:", 0, 50, 10, decimals=1, suffix=" mm")
         self._padding_left.valueChanged.connect(self._on_changed)
+        self._padding_left.dragging.connect(self._on_dimension_dragging)
         padding_layout.addWidget(self._padding_left)
-        
+
         self._padding_right = SliderSpinBox("Right:", 0, 50, 10, decimals=1, suffix=" mm")
         self._padding_right.valueChanged.connect(self._on_changed)
+        self._padding_right.dragging.connect(self._on_dimension_dragging)
         padding_layout.addWidget(self._padding_right)
         
         layout.addWidget(padding_group)
@@ -222,6 +247,7 @@ class BasePlatePanel(QWidget):
 
         self._edge_size_slider = SliderSpinBox("Size:", 0.2, 2.0, 0.5, decimals=1, suffix=" mm")
         self._edge_size_slider.valueChanged.connect(self._on_changed)
+        self._edge_size_slider.dragging.connect(self._on_dimension_dragging)
         self._edge_size_slider.setVisible(False)
         edge_layout.addWidget(self._edge_size_slider)
 
@@ -253,14 +279,17 @@ class BasePlatePanel(QWidget):
 
         self._border_width_slider = SliderSpinBox("Width:", 1, 10, 3, decimals=1, suffix=" mm")
         self._border_width_slider.valueChanged.connect(self._on_changed)
+        self._border_width_slider.dragging.connect(self._on_dimension_dragging)
         border_layout.addWidget(self._border_width_slider)
 
         self._border_height_slider = SliderSpinBox("Height:", 0.5, 3, 1.5, decimals=1, suffix=" mm")
         self._border_height_slider.valueChanged.connect(self._on_changed)
+        self._border_height_slider.dragging.connect(self._on_dimension_dragging)
         border_layout.addWidget(self._border_height_slider)
 
         self._border_offset_slider = SliderSpinBox("Offset:", 1, 15, 2, decimals=1, suffix=" mm")
         self._border_offset_slider.valueChanged.connect(self._on_changed)
+        self._border_offset_slider.dragging.connect(self._on_dimension_dragging)
         border_layout.addWidget(self._border_offset_slider)
 
         # Initially hide border controls
@@ -290,10 +319,12 @@ class BasePlatePanel(QWidget):
 
         self._layer_offset_slider = SliderSpinBox("Layer Offset:", 0.5, 5.0, 2.0, decimals=1, suffix=" mm")
         self._layer_offset_slider.valueChanged.connect(self._on_changed)
+        self._layer_offset_slider.dragging.connect(self._on_dimension_dragging)
         layered_layout.addWidget(self._layer_offset_slider)
 
         self._layer_shrink_slider = SliderSpinBox("Layer Shrink:", 1.0, 10.0, 3.0, decimals=1, suffix=" mm")
         self._layer_shrink_slider.valueChanged.connect(self._on_changed)
+        self._layer_shrink_slider.dragging.connect(self._on_dimension_dragging)
         layered_layout.addWidget(self._layer_shrink_slider)
 
         # Initially hide layered controls
@@ -312,14 +343,17 @@ class BasePlatePanel(QWidget):
 
         self._inset_depth_slider = SliderSpinBox("Depth:", 0.3, 2.0, 1.0, decimals=1, suffix=" mm")
         self._inset_depth_slider.valueChanged.connect(self._on_changed)
+        self._inset_depth_slider.dragging.connect(self._on_dimension_dragging)
         inset_layout.addWidget(self._inset_depth_slider)
 
         self._inset_margin_slider = SliderSpinBox("Margin:", 2.0, 15.0, 5.0, decimals=1, suffix=" mm")
         self._inset_margin_slider.valueChanged.connect(self._on_changed)
+        self._inset_margin_slider.dragging.connect(self._on_dimension_dragging)
         inset_layout.addWidget(self._inset_margin_slider)
 
         self._inset_corner_slider = SliderSpinBox("Corner Radius:", 0.0, 10.0, 3.0, decimals=1, suffix=" mm")
         self._inset_corner_slider.valueChanged.connect(self._on_changed)
+        self._inset_corner_slider.dragging.connect(self._on_dimension_dragging)
         inset_layout.addWidget(self._inset_corner_slider)
 
         # Initially hide inset controls
@@ -404,6 +438,41 @@ class BasePlatePanel(QWidget):
     
     def _on_changed(self, *args):
         self.settings_changed.emit()
+
+    def _on_dimension_dragging(self, value):
+        """Emit dimension_dragging for real-time preview during slider drag."""
+        self.dimension_dragging.emit()
+
+    def _on_scale_dimension_dragging(self, value):
+        """Emit scale values for real-time transform-based preview during dimension drag."""
+        width = self._width_slider.value()
+        height = self._height_slider.value()
+        thickness = self._thickness_slider.value()
+        self.baseplate_scale_dragging.emit(width, height, thickness)
+
+    def _on_dimension_drag_started(self):
+        """Handle dimension slider drag start."""
+        if not self._is_dimension_dragging:
+            self._is_dimension_dragging = True
+            self.dimension_drag_started.emit()
+
+    def _on_dimension_drag_ended(self):
+        """Handle dimension slider drag end."""
+        if self._is_dimension_dragging:
+            self._is_dimension_dragging = False
+            self.dimension_drag_ended.emit()
+
+    def is_dimension_dragging(self) -> bool:
+        """Return whether a dimension slider is currently being dragged."""
+        return self._is_dimension_dragging
+
+    def get_current_dimensions(self) -> tuple:
+        """Get current width, height, thickness values."""
+        return (
+            self._width_slider.value(),
+            self._height_slider.value(),
+            self._thickness_slider.value()
+        )
 
     def _on_pattern_changed(self, pattern_text: str):
         """Handle pattern type change."""

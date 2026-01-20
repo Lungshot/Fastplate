@@ -105,6 +105,76 @@ class PlateConfig:
             self.padding_top + self.padding_bottom
         )
 
+    def to_dict(self) -> dict:
+        """Serialize PlateConfig to a dictionary."""
+        return {
+            'shape': self.shape.value,
+            'width': self.width,
+            'height': self.height,
+            'thickness': self.thickness,
+            'corner_radius': self.corner_radius,
+            'chamfer_size': self.chamfer_size,
+            'edge_style': self.edge_style.value,
+            'edge_size': self.edge_size,
+            'edge_top_only': self.edge_top_only,
+            'auto_width': self.auto_width,
+            'auto_height': self.auto_height,
+            'padding_top': self.padding_top,
+            'padding_bottom': self.padding_bottom,
+            'padding_left': self.padding_left,
+            'padding_right': self.padding_right,
+            'custom_svg_paths': self.custom_svg_paths,
+            'custom_svg_name': self.custom_svg_name,
+            'layered_enabled': self.layered_enabled,
+            'layer_count': self.layer_count,
+            'layer_offset': self.layer_offset,
+            'layer_shrink': self.layer_shrink,
+            'inset_enabled': self.inset_enabled,
+            'inset_depth': self.inset_depth,
+            'inset_margin': self.inset_margin,
+            'inset_corner_radius': self.inset_corner_radius,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'PlateConfig':
+        """Deserialize PlateConfig from a dictionary."""
+        # Handle enum conversions
+        shape = data.get('shape', 'rounded_rectangle')
+        if isinstance(shape, str):
+            shape = PlateShape(shape)
+
+        edge_style = data.get('edge_style', 'none')
+        if isinstance(edge_style, str):
+            edge_style = EdgeStyle(edge_style)
+
+        return cls(
+            shape=shape,
+            width=data.get('width', 100.0),
+            height=data.get('height', 30.0),
+            thickness=data.get('thickness', 3.0),
+            corner_radius=data.get('corner_radius', 5.0),
+            chamfer_size=data.get('chamfer_size', 3.0),
+            edge_style=edge_style,
+            edge_size=data.get('edge_size', 0.5),
+            edge_top_only=data.get('edge_top_only', True),
+            auto_width=data.get('auto_width', False),
+            auto_height=data.get('auto_height', False),
+            padding_top=data.get('padding_top', 5.0),
+            padding_bottom=data.get('padding_bottom', 5.0),
+            padding_left=data.get('padding_left', 10.0),
+            padding_right=data.get('padding_right', 10.0),
+            custom_svg_paths=data.get('custom_svg_paths', []),
+            custom_svg_name=data.get('custom_svg_name', ''),
+            layered_enabled=data.get('layered_enabled', False),
+            layer_count=data.get('layer_count', 2),
+            layer_offset=data.get('layer_offset', 2.0),
+            layer_shrink=data.get('layer_shrink', 3.0),
+            inset_enabled=data.get('inset_enabled', False),
+            inset_depth=data.get('inset_depth', 1.0),
+            inset_margin=data.get('inset_margin', 5.0),
+            inset_corner_radius=data.get('inset_corner_radius', 3.0),
+        )
+
 
 class BasePlateGenerator:
     """

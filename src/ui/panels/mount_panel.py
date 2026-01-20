@@ -14,9 +14,11 @@ from ui.widgets.slider_spin import SliderSpinBox, FocusComboBox, ResetableComboB
 
 class MountPanel(QWidget):
     """Panel for mounting settings."""
-    
+
     settings_changed = pyqtSignal()
-    
+    # Signal for real-time preview during slider drag
+    slider_dragging = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._setup_ui()
@@ -102,10 +104,12 @@ class MountPanel(QWidget):
         
         self._stand_angle = SliderSpinBox("Angle:", 10, 75, 25, decimals=0, suffix="°")
         self._stand_angle.valueChanged.connect(self._on_changed)
+        self._stand_angle.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._stand_angle)
-        
+
         self._stand_depth = SliderSpinBox("Depth:", 15, 60, 30, decimals=0, suffix=" mm")
         self._stand_depth.valueChanged.connect(self._on_changed)
+        self._stand_depth.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._stand_depth)
         
         self._stand_integrated = QCheckBox("Integrated (single piece)")
@@ -140,15 +144,17 @@ class MountPanel(QWidget):
         
         self._hole_diameter = SliderSpinBox("Hole Diameter:", 2, 10, 4, decimals=1, suffix=" mm")
         self._hole_diameter.valueChanged.connect(self._on_changed)
+        self._hole_diameter.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._hole_diameter)
-        
+
         self._countersink = QCheckBox("Countersink")
         self._countersink.setChecked(True)
         self._countersink.stateChanged.connect(self._on_changed)
         group_layout.addWidget(self._countersink)
-        
+
         self._hole_edge = SliderSpinBox("Edge Distance:", 3, 20, 8, decimals=1, suffix=" mm")
         self._hole_edge.valueChanged.connect(self._on_changed)
+        self._hole_edge.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._hole_edge)
         
         layout.addWidget(group)
@@ -165,14 +171,17 @@ class MountPanel(QWidget):
         
         self._keyhole_large = SliderSpinBox("Large Diameter:", 6, 15, 10, decimals=1, suffix=" mm")
         self._keyhole_large.valueChanged.connect(self._on_changed)
+        self._keyhole_large.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._keyhole_large)
-        
+
         self._keyhole_small = SliderSpinBox("Small Diameter:", 3, 10, 5, decimals=1, suffix=" mm")
         self._keyhole_small.valueChanged.connect(self._on_changed)
+        self._keyhole_small.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._keyhole_small)
-        
+
         self._keyhole_length = SliderSpinBox("Slot Length:", 8, 25, 12, decimals=1, suffix=" mm")
         self._keyhole_length.valueChanged.connect(self._on_changed)
+        self._keyhole_length.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._keyhole_length)
         
         layout.addWidget(group)
@@ -213,6 +222,7 @@ class MountPanel(QWidget):
         
         self._magnet_edge = SliderSpinBox("Edge Distance:", 5, 25, 10, decimals=1, suffix=" mm")
         self._magnet_edge.valueChanged.connect(self._on_changed)
+        self._magnet_edge.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._magnet_edge)
         
         layout.addWidget(group)
@@ -237,6 +247,7 @@ class MountPanel(QWidget):
         
         self._hanging_diameter = SliderSpinBox("Diameter:", 3, 10, 5, decimals=1, suffix=" mm")
         self._hanging_diameter.valueChanged.connect(self._on_changed)
+        self._hanging_diameter.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._hanging_diameter)
         
         layout.addWidget(group)
@@ -261,10 +272,12 @@ class MountPanel(QWidget):
 
         self._lanyard_width = SliderSpinBox("Slot Width:", 8, 30, 15, decimals=1, suffix=" mm")
         self._lanyard_width.valueChanged.connect(self._on_changed)
+        self._lanyard_width.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._lanyard_width)
 
         self._lanyard_height = SliderSpinBox("Slot Height:", 2, 8, 4, decimals=1, suffix=" mm")
         self._lanyard_height.valueChanged.connect(self._on_changed)
+        self._lanyard_height.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._lanyard_height)
 
         layout.addWidget(group)
@@ -309,14 +322,17 @@ class MountPanel(QWidget):
 
         self._clip_width = SliderSpinBox("Clip Width:", 10, 50, 20, decimals=0, suffix=" mm")
         self._clip_width.valueChanged.connect(self._on_changed)
+        self._clip_width.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._clip_width)
 
         self._clip_thickness = SliderSpinBox("Clip Thickness:", 1, 4, 2, decimals=1, suffix=" mm")
         self._clip_thickness.valueChanged.connect(self._on_changed)
+        self._clip_thickness.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._clip_thickness)
 
         self._clip_gap = SliderSpinBox("Clip Gap:", 1, 8, 3, decimals=1, suffix=" mm")
         self._clip_gap.valueChanged.connect(self._on_changed)
+        self._clip_gap.dragging.connect(self._on_slider_dragging)
         group_layout.addWidget(self._clip_gap)
 
         layout.addWidget(group)
@@ -326,9 +342,13 @@ class MountPanel(QWidget):
         """Handle mount type change."""
         self._options_stack.setCurrentIndex(index)
         self._on_changed()
-    
+
     def _on_changed(self, *args):
         self.settings_changed.emit()
+
+    def _on_slider_dragging(self, value):
+        """Emit slider_dragging for real-time preview during slider drag."""
+        self.slider_dragging.emit()
     
     def get_config(self) -> dict:
         """Get the mount configuration."""

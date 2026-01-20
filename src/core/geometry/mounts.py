@@ -38,23 +38,40 @@ class MagnetSize:
     diameter: float
     height: float
     name: str
-    
+
     # Common sizes
     @staticmethod
     def DISC_6x2():
         return MagnetSize(6.0, 2.0, "6x2mm Disc")
-    
+
     @staticmethod
     def DISC_8x3():
         return MagnetSize(8.0, 3.0, "8x3mm Disc")
-    
+
     @staticmethod
     def DISC_10x2():
         return MagnetSize(10.0, 2.0, "10x2mm Disc")
-    
+
     @staticmethod
     def CUBE_5():
         return MagnetSize(5.0, 5.0, "5mm Cube")
+
+    def to_dict(self) -> dict:
+        """Serialize MagnetSize to a dictionary."""
+        return {
+            'diameter': self.diameter,
+            'height': self.height,
+            'name': self.name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MagnetSize':
+        """Deserialize MagnetSize from a dictionary."""
+        return cls(
+            diameter=data.get('diameter', 8.0),
+            height=data.get('height', 3.0),
+            name=data.get('name', '8x3mm Disc'),
+        )
 
 
 @dataclass
@@ -106,6 +123,91 @@ class MountConfig:
     clip_thickness: float = 2.0         # mm - material thickness
     clip_gap: float = 3.0               # mm - gap for material to clip onto
     clip_position: str = "back_top"     # back_top, back_bottom, back_both
+
+    def to_dict(self) -> dict:
+        """Serialize MountConfig to a dictionary."""
+        return {
+            'mount_type': self.mount_type.value,
+            'stand_angle': self.stand_angle,
+            'stand_integrated': self.stand_integrated,
+            'stand_depth': self.stand_depth,
+            'stand_thickness': self.stand_thickness,
+            'hole_pattern': self.hole_pattern.value,
+            'hole_diameter': self.hole_diameter,
+            'hole_countersink': self.hole_countersink,
+            'countersink_diameter': self.countersink_diameter,
+            'countersink_depth': self.countersink_depth,
+            'hole_edge_distance': self.hole_edge_distance,
+            'keyhole_large_diameter': self.keyhole_large_diameter,
+            'keyhole_small_diameter': self.keyhole_small_diameter,
+            'keyhole_length': self.keyhole_length,
+            'magnet_size': self.magnet_size.to_dict(),
+            'magnet_count': self.magnet_count,
+            'magnet_edge_distance': self.magnet_edge_distance,
+            'magnet_tolerance': self.magnet_tolerance,
+            'hanging_hole_diameter': self.hanging_hole_diameter,
+            'hanging_hole_position': self.hanging_hole_position,
+            'lanyard_slot_width': self.lanyard_slot_width,
+            'lanyard_slot_height': self.lanyard_slot_height,
+            'lanyard_slot_position': self.lanyard_slot_position,
+            'cleat_angle': self.cleat_angle,
+            'cleat_depth': self.cleat_depth,
+            'cleat_width': self.cleat_width,
+            'clip_width': self.clip_width,
+            'clip_thickness': self.clip_thickness,
+            'clip_gap': self.clip_gap,
+            'clip_position': self.clip_position,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MountConfig':
+        """Deserialize MountConfig from a dictionary."""
+        mount_type = data.get('mount_type', 'none')
+        if isinstance(mount_type, str):
+            mount_type = MountType(mount_type)
+
+        hole_pattern = data.get('hole_pattern', 'two_top')
+        if isinstance(hole_pattern, str):
+            hole_pattern = HolePattern(hole_pattern)
+
+        magnet_data = data.get('magnet_size', {})
+        if isinstance(magnet_data, dict):
+            magnet_size = MagnetSize.from_dict(magnet_data)
+        else:
+            magnet_size = MagnetSize.DISC_8x3()
+
+        return cls(
+            mount_type=mount_type,
+            stand_angle=data.get('stand_angle', 25.0),
+            stand_integrated=data.get('stand_integrated', True),
+            stand_depth=data.get('stand_depth', 30.0),
+            stand_thickness=data.get('stand_thickness', 3.0),
+            hole_pattern=hole_pattern,
+            hole_diameter=data.get('hole_diameter', 4.0),
+            hole_countersink=data.get('hole_countersink', True),
+            countersink_diameter=data.get('countersink_diameter', 8.0),
+            countersink_depth=data.get('countersink_depth', 2.0),
+            hole_edge_distance=data.get('hole_edge_distance', 8.0),
+            keyhole_large_diameter=data.get('keyhole_large_diameter', 10.0),
+            keyhole_small_diameter=data.get('keyhole_small_diameter', 5.0),
+            keyhole_length=data.get('keyhole_length', 12.0),
+            magnet_size=magnet_size,
+            magnet_count=data.get('magnet_count', 2),
+            magnet_edge_distance=data.get('magnet_edge_distance', 10.0),
+            magnet_tolerance=data.get('magnet_tolerance', 0.2),
+            hanging_hole_diameter=data.get('hanging_hole_diameter', 5.0),
+            hanging_hole_position=data.get('hanging_hole_position', 'top_center'),
+            lanyard_slot_width=data.get('lanyard_slot_width', 15.0),
+            lanyard_slot_height=data.get('lanyard_slot_height', 4.0),
+            lanyard_slot_position=data.get('lanyard_slot_position', 'top_center'),
+            cleat_angle=data.get('cleat_angle', 45.0),
+            cleat_depth=data.get('cleat_depth', 5.0),
+            cleat_width=data.get('cleat_width', 15.0),
+            clip_width=data.get('clip_width', 20.0),
+            clip_thickness=data.get('clip_thickness', 2.0),
+            clip_gap=data.get('clip_gap', 3.0),
+            clip_position=data.get('clip_position', 'back_top'),
+        )
 
 
 class MountGenerator:

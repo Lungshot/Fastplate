@@ -1,12 +1,13 @@
 """
 Pattern Generator
 Creates decorative patterns for nameplate backgrounds.
+Optimized for performance using batch operations.
 """
 
 import cadquery as cq
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, List, Tuple
 from enum import Enum
 
 
@@ -32,6 +33,33 @@ class PatternConfig:
     depth: float = 0.3         # mm depth of engraved pattern
     angle: float = 0.0         # degrees rotation of pattern
     style: str = "engraved"    # "engraved" or "raised"
+
+    def to_dict(self) -> dict:
+        """Serialize PatternConfig to a dictionary."""
+        return {
+            'pattern_type': self.pattern_type.value,
+            'spacing': self.spacing,
+            'size': self.size,
+            'depth': self.depth,
+            'angle': self.angle,
+            'style': self.style,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'PatternConfig':
+        """Deserialize PatternConfig from a dictionary."""
+        pattern_type = data.get('pattern_type', 'none')
+        if isinstance(pattern_type, str):
+            pattern_type = PatternType(pattern_type)
+
+        return cls(
+            pattern_type=pattern_type,
+            spacing=data.get('spacing', 5.0),
+            size=data.get('size', 1.0),
+            depth=data.get('depth', 0.3),
+            angle=data.get('angle', 0.0),
+            style=data.get('style', 'engraved'),
+        )
 
 
 class PatternGenerator:
@@ -67,75 +95,77 @@ class PatternGenerator:
         generator = generators.get(config.pattern_type)
         if generator:
             pattern = generator(config, width, height)
-            if pattern and config.angle != 0:
-                pattern = pattern.rotate((0, 0, 0), (0, 0, 1), config.angle)
+            if pattern:
+                # Apply rotation if specified
+                if config.angle != 0:
+                    pattern = pattern.rotate((0, 0, 0), (0, 0, 1), config.angle)
+                # Position pattern at TOP of plate surface
+                # All patterns use extrude() starting at Z=0, going to Z=depth
+                # Translate so pattern cuts from plate_thickness-depth to plate_thickness
+                z_position = plate_thickness - config.depth
+                pattern = pattern.translate((0, 0, z_position))
             return pattern
 
         return None
 
     def _make_grid(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create a grid pattern of lines."""
-        result = None
+        """Create a grid pattern of lines - optimized with single sketch."""
         spacing = config.spacing
         line_width = config.size
+
+        # Build all lines in a single sketch
+        sketch = cq.Sketch()
 
         # Vertical lines
         x = -width / 2
         while x <= width / 2:
-            line = (
-                cq.Workplane("XY")
-                .box(line_width, height, config.depth)
-                .translate((x, 0, config.depth / 2))
-            )
-            if result is None:
-                result = line
-            else:
-                result = result.union(line)
+            sketch = sketch.push([(x, 0)]).rect(line_width, height).reset()
             x += spacing
 
         # Horizontal lines
         y = -height / 2
         while y <= height / 2:
-            line = (
-                cq.Workplane("XY")
-                .box(width, line_width, config.depth)
-                .translate((0, y, config.depth / 2))
-            )
-            result = result.union(line)
+            sketch = sketch.push([(0, y)]).rect(width, line_width).reset()
             y += spacing
 
+        # Extrude once
+        result = cq.Workplane("XY").placeSketch(sketch).extrude(config.depth)
         return result
 
     def _make_dots(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create a pattern of dots."""
-        result = None
+        """Create a pattern of dots - optimized with pushPoints."""
         spacing = config.spacing
         radius = config.size / 2
 
+        # Collect all dot positions
+        points = []
         y = -height / 2 + spacing / 2
         while y <= height / 2:
             x = -width / 2 + spacing / 2
             while x <= width / 2:
-                dot = (
-                    cq.Workplane("XY")
-                    .circle(radius)
-                    .extrude(config.depth)
-                    .translate((x, y, 0))
-                )
-                if result is None:
-                    result = dot
-                else:
-                    result = result.union(dot)
+                points.append((x, y))
                 x += spacing
             y += spacing
 
+        if not points:
+            return None
+
+        # Create all dots at once using pushPoints
+        result = (
+            cq.Workplane("XY")
+            .pushPoints(points)
+            .circle(radius)
+            .extrude(config.depth)
+        )
         return result
 
     def _make_diamonds(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create a diamond pattern."""
-        result = None
+        """Create a diamond pattern - optimized with sketch."""
         spacing = config.spacing
         size = config.size
+
+        # Build sketch with all diamonds
+        sketch = cq.Sketch()
 
         y = -height / 2
         row = 0
@@ -143,126 +173,103 @@ class PatternGenerator:
             x_offset = (row % 2) * spacing / 2
             x = -width / 2 + x_offset
             while x <= width / 2 + spacing:
-                # Create diamond shape
-                diamond = (
-                    cq.Workplane("XY")
-                    .polygon(4, size, circumscribed=False)
-                    .extrude(config.depth)
-                    .rotate((0, 0, 0), (0, 0, 1), 45)
-                    .translate((x, y, 0))
-                )
-                if result is None:
-                    result = diamond
-                else:
-                    result = result.union(diamond)
+                # Add rotated square (diamond) at this position
+                sketch = sketch.push([(x, y)]).regularPolygon(size / 1.414, 4, angle=45).reset()
                 x += spacing
             y += spacing
             row += 1
 
+        # Extrude once
+        result = cq.Workplane("XY").placeSketch(sketch).extrude(config.depth)
         return result
 
     def _make_hexagons(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create a honeycomb pattern."""
-        result = None
+        """Create a honeycomb pattern - optimized with sketch."""
         spacing = config.spacing
         size = config.size
 
         # Hexagon dimensions
         hex_width = size * 2
         hex_height = size * math.sqrt(3)
-        horiz_spacing = hex_width * 0.75
-        vert_spacing = hex_height
+        horiz_spacing = max(hex_width * 0.75, spacing)
+        vert_spacing = max(hex_height, spacing)
+
+        # Build sketch with all hexagons
+        sketch = cq.Sketch()
 
         y = -height / 2
         row = 0
-        while y <= height / 2 + vert_spacing:
+        count = 0
+        max_shapes = 200  # Limit to prevent crashes
+
+        while y <= height / 2 + vert_spacing and count < max_shapes:
             x_offset = (row % 2) * horiz_spacing / 2
             x = -width / 2 + x_offset
-            while x <= width / 2 + horiz_spacing:
-                hex_shape = (
-                    cq.Workplane("XY")
-                    .polygon(6, size)
-                    .extrude(config.depth)
-                    .translate((x, y, 0))
-                )
-                if result is None:
-                    result = hex_shape
-                else:
-                    result = result.union(hex_shape)
+            while x <= width / 2 + horiz_spacing and count < max_shapes:
+                sketch = sketch.push([(x, y)]).regularPolygon(size, 6).reset()
                 x += horiz_spacing
+                count += 1
             y += vert_spacing
             row += 1
 
+        # Extrude once
+        result = cq.Workplane("XY").placeSketch(sketch).extrude(config.depth)
         return result
 
     def _make_lines(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create parallel lines pattern."""
-        result = None
+        """Create parallel lines pattern - optimized with single sketch."""
         spacing = config.spacing
         line_width = config.size
 
-        # Horizontal lines
+        # Build all lines in a single sketch
+        sketch = cq.Sketch()
+
         y = -height / 2
         while y <= height / 2:
-            line = (
-                cq.Workplane("XY")
-                .box(width, line_width, config.depth)
-                .translate((0, y, config.depth / 2))
-            )
-            if result is None:
-                result = line
-            else:
-                result = result.union(line)
+            sketch = sketch.push([(0, y)]).rect(width, line_width).reset()
             y += spacing
 
+        # Extrude once
+        result = cq.Workplane("XY").placeSketch(sketch).extrude(config.depth)
         return result
 
     def _make_crosshatch(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create a crosshatch pattern."""
-        result = None
+        """Create a crosshatch pattern - optimized with single sketch."""
         spacing = config.spacing
         line_width = config.size
 
         # Calculate diagonal length needed
         diagonal = math.sqrt(width**2 + height**2)
 
-        # Create lines at 45 degrees
+        # Build all lines in a single sketch
+        sketch = cq.Sketch()
+
         offset = -diagonal / 2
         while offset <= diagonal / 2:
-            # Line at +45 degrees
-            line1 = (
-                cq.Workplane("XY")
-                .box(line_width, diagonal * 1.5, config.depth)
-                .rotate((0, 0, 0), (0, 0, 1), 45)
-                .translate((offset * 0.707, 0, config.depth / 2))
-            )
+            # Line at +45 degrees (rotated rect)
+            x1 = offset * 0.707
+            sketch = sketch.push([(x1, 0)]).rect(line_width, diagonal * 1.5, angle=45).reset()
 
             # Line at -45 degrees
-            line2 = (
-                cq.Workplane("XY")
-                .box(line_width, diagonal * 1.5, config.depth)
-                .rotate((0, 0, 0), (0, 0, 1), -45)
-                .translate((offset * 0.707, 0, config.depth / 2))
-            )
-
-            if result is None:
-                result = line1.union(line2)
-            else:
-                result = result.union(line1).union(line2)
+            sketch = sketch.push([(x1, 0)]).rect(line_width, diagonal * 1.5, angle=-45).reset()
 
             offset += spacing
 
+        # Extrude once
+        result = cq.Workplane("XY").placeSketch(sketch).extrude(config.depth)
         return result
 
     def _make_chevron(self, config: PatternConfig, width: float, height: float) -> Optional[cq.Workplane]:
-        """Create a chevron/arrow pattern."""
-        result = None
+        """Create a chevron/arrow pattern - optimized."""
         spacing = config.spacing
         size = config.size
 
+        # Collect all chevron shapes
+        shapes = []
         y = -height / 2
+
         while y <= height / 2 + spacing:
-            # Create V-shaped chevron
+            # Create V-shaped chevron points
             half_width = width / 2 + spacing
             points = [
                 (-half_width, 0),
@@ -280,12 +287,32 @@ class PatternGenerator:
                 .extrude(config.depth)
                 .translate((0, y, 0))
             )
-
-            if result is None:
-                result = chevron
-            else:
-                result = result.union(chevron)
-
+            shapes.append(chevron)
             y += spacing
 
+        # Combine all shapes - use compound for efficiency
+        if not shapes:
+            return None
+
+        if len(shapes) == 1:
+            return shapes[0]
+
+        # Batch union - combine pairs recursively for better performance
+        result = self._batch_union(shapes)
         return result
+
+    def _batch_union(self, shapes: List[cq.Workplane]) -> cq.Workplane:
+        """
+        Efficiently union multiple shapes using divide-and-conquer.
+        This is O(n log n) instead of O(n²) for sequential unions.
+        """
+        if len(shapes) == 1:
+            return shapes[0]
+        if len(shapes) == 2:
+            return shapes[0].union(shapes[1])
+
+        # Split and recursively union
+        mid = len(shapes) // 2
+        left = self._batch_union(shapes[:mid])
+        right = self._batch_union(shapes[mid:])
+        return left.union(right)

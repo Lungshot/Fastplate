@@ -28,6 +28,37 @@ class QRConfig:
     error_correction: str = "M"  # L, M, Q, H
     border: int = 1  # Quiet zone border modules
 
+    def to_dict(self) -> dict:
+        """Serialize QRConfig to a dictionary."""
+        return {
+            'data': self.data,
+            'size': self.size,
+            'depth': self.depth,
+            'style': self.style.value,
+            'position_x': self.position_x,
+            'position_y': self.position_y,
+            'error_correction': self.error_correction,
+            'border': self.border,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'QRConfig':
+        """Deserialize QRConfig from a dictionary."""
+        style = data.get('style', 'raised')
+        if isinstance(style, str):
+            style = QRStyle(style)
+
+        return cls(
+            data=data.get('data', ''),
+            size=data.get('size', 20.0),
+            depth=data.get('depth', 1.0),
+            style=style,
+            position_x=data.get('position_x', 0.0),
+            position_y=data.get('position_y', 0.0),
+            error_correction=data.get('error_correction', 'M'),
+            border=data.get('border', 1),
+        )
+
 
 class QRCodeGenerator:
     """Generates QR code geometry."""

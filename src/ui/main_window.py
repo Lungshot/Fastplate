@@ -18,10 +18,12 @@ from ui.panels.mount_panel import MountPanel
 from ui.panels.preset_panel import PresetPanel
 from ui.panels.svg_panel import SVGPanel
 from ui.preview_worker import PreviewWorker
+from ui.config_builder import ConfigBuilder
 
 from fonts.font_manager import get_font_manager
 from core.nameplate import NameplateBuilder, NameplateConfig
 from core.export.exporter import ExportFormat
+from core.state_manager import UndoRedoManager
 from utils.debug_log import debug_log
 from ui.theme_manager import get_theme_manager
 
@@ -29,7 +31,9 @@ from ui.theme_manager import get_theme_manager
 from core.geometry.text_builder import (
     TextLineConfig, TextSegment, TextStyle, TextAlign, TextOrientation, TextEffect
 )
-from core.geometry.base_plates import PlateShape
+from core.geometry.base_plates import PlateShape, EdgeStyle
+from core.geometry.borders import BorderStyle
+from core.geometry.patterns import PatternType
 from core.geometry.mounts import MountType, HolePattern, MagnetSize
 
 
@@ -42,8 +46,13 @@ class MainWindow(QMainWindow):
         # Core components
         self._font_manager = get_font_manager()
         self._nameplate_builder = NameplateBuilder()
+        self._config_builder = ConfigBuilder(self._font_manager)
         self._preview_manager = None
         self._theme_manager = get_theme_manager()
+
+        # Undo/Redo manager
+        self._undo_manager = UndoRedoManager(max_history=50)
+        self._undo_manager.add_change_callback(self._update_undo_redo_state)
 
         # Project file tracking
         self._current_project_path = None
@@ -92,20 +101,37 @@ class MainWindow(QMainWindow):
         # Main splitter
         splitter = QSplitter(Qt.Horizontal)
         
-        # Left side: 3D viewer and presets
+        # Left side: 3D viewer with Undo/Redo buttons below
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # 3D Viewer
         self._viewer = Viewer3DWidget()
         self._preview_manager = PreviewManager(self._viewer)
-        left_layout.addWidget(self._viewer, stretch=3)
-        
-        # Presets panel
-        self._preset_panel = PresetPanel()
-        left_layout.addWidget(self._preset_panel, stretch=1)
-        
+        left_layout.addWidget(self._viewer, stretch=1)
+
+        # Undo/Redo buttons below viewport
+        undo_redo_layout = QHBoxLayout()
+        undo_redo_layout.addStretch()
+
+        self._undo_btn = QPushButton("← Undo")
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.setToolTip("Undo last change (Ctrl+Z)")
+        self._undo_btn.clicked.connect(self._on_undo)
+        self._undo_btn.setMinimumWidth(80)
+        undo_redo_layout.addWidget(self._undo_btn)
+
+        self._redo_btn = QPushButton("Redo →")
+        self._redo_btn.setEnabled(False)
+        self._redo_btn.setToolTip("Redo last change (Ctrl+Y)")
+        self._redo_btn.clicked.connect(self._on_redo)
+        self._redo_btn.setMinimumWidth(80)
+        undo_redo_layout.addWidget(self._redo_btn)
+
+        undo_redo_layout.addStretch()
+        left_layout.addLayout(undo_redo_layout)
+
         splitter.addWidget(left_widget)
         
         # Right side: Settings tabs
@@ -131,6 +157,10 @@ class MainWindow(QMainWindow):
         # SVG panel
         self._svg_panel = SVGPanel()
         self._tabs.addTab(self._svg_panel, "SVG/Graphics")
+
+        # Presets panel (moved from below viewport)
+        self._preset_panel = PresetPanel()
+        self._tabs.addTab(self._preset_panel, "Presets")
 
         right_layout.addWidget(self._tabs)
         
@@ -228,7 +258,21 @@ class MainWindow(QMainWindow):
         
         # Edit menu
         edit_menu = menubar.addMenu("&Edit")
-        
+
+        self._undo_action = QAction("&Undo", self)
+        self._undo_action.setShortcut(QKeySequence.Undo)
+        self._undo_action.triggered.connect(self._on_undo)
+        self._undo_action.setEnabled(False)
+        edit_menu.addAction(self._undo_action)
+
+        self._redo_action = QAction("&Redo", self)
+        self._redo_action.setShortcut(QKeySequence.Redo)
+        self._redo_action.triggered.connect(self._on_redo)
+        self._redo_action.setEnabled(False)
+        edit_menu.addAction(self._redo_action)
+
+        edit_menu.addSeparator()
+
         refresh_action = QAction("&Refresh Preview", self)
         refresh_action.setShortcut(QKeySequence("F5"))
         refresh_action.triggered.connect(self._update_preview)
@@ -289,12 +333,23 @@ class MainWindow(QMainWindow):
         # Panel changes trigger preview update
         self._text_panel.settings_changed.connect(self._schedule_update)
         self._base_panel.settings_changed.connect(self._schedule_update)
+        self._base_panel.dimension_dragging.connect(self._on_dimension_dragging)
+        # Real-time scale preview for width/height/thickness
+        self._base_panel.baseplate_scale_dragging.connect(self._on_baseplate_scale_dragging)
+        self._base_panel.dimension_drag_started.connect(self._on_baseplate_drag_started)
+        self._base_panel.dimension_drag_ended.connect(self._on_baseplate_drag_ended)
         self._mount_panel.settings_changed.connect(self._schedule_update)
+        # Real-time mount slider preview during drag
+        self._mount_panel.slider_dragging.connect(self._on_dimension_dragging)
         self._svg_panel.settings_changed.connect(self._schedule_update)
         # Real-time SVG position preview during drag
         self._svg_panel.svg_position_dragging.connect(self._on_svg_position_dragging)
+        # Real-time SVG slider preview during drag (size, depth)
+        self._svg_panel.slider_dragging.connect(self._on_dimension_dragging)
         # Real-time text position preview during drag
         self._text_panel.text_position_dragging.connect(self._on_text_position_dragging)
+        # Real-time text slider preview during drag (depth, spacing, effect, arc)
+        self._text_panel.slider_dragging.connect(self._on_dimension_dragging)
 
         # Google icon selection from text panel
         self._text_panel.google_icon_selected.connect(self._on_google_icon_selected)
@@ -333,6 +388,10 @@ class MainWindow(QMainWindow):
         """Actually perform the preview update using background worker."""
         # Build config from UI (this is fast)
         config = self._build_config()
+
+        # Save state for undo/redo (only if not restoring from undo/redo)
+        if not getattr(self, '_is_restoring_state', False):
+            self._undo_manager.save_state(config.to_dict(), "Settings changed")
 
         # Store config for use in the callback
         self._pending_config = config
@@ -413,140 +472,12 @@ class MainWindow(QMainWindow):
     
     def _build_config(self) -> NameplateConfig:
         """Build NameplateConfig from current UI state."""
-        config = NameplateConfig()
-        
-        # Get text config
-        text_cfg = self._text_panel.get_config()
-
-        config.text.lines = []
-        for line_data in text_cfg.get('lines', []):
-            # Build segments if present
-            segments = []
-            segments_data = line_data.get('segments', [])
-            if segments_data:
-                for seg_data in segments_data:
-                    seg = TextSegment(
-                        content=seg_data.get('content', ''),
-                        font_family=seg_data.get('font_family', 'Arial'),
-                        font_style=seg_data.get('font_style', 'Regular'),
-                        font_size=seg_data.get('font_size', 12.0),
-                        letter_spacing=seg_data.get('letter_spacing', 0.0),
-                        vertical_offset=seg_data.get('vertical_offset', 0.0),
-                        is_icon=seg_data.get('is_icon', False),
-                    )
-                    # Get font path for this segment
-                    font_path = self._font_manager.get_font_path(
-                        seg.font_family, seg.font_style
-                    )
-                    if font_path:
-                        seg.font_path = font_path
-                    segments.append(seg)
-
-            line = TextLineConfig(
-                content=line_data.get('content', ''),
-                font_family=line_data.get('font_family', 'Arial'),
-                font_style=line_data.get('font_style', 'Regular'),
-                font_size=line_data.get('font_size', 12.0),
-                letter_spacing=line_data.get('letter_spacing', 0.0),
-                segments=segments,
-                segment_gap=line_data.get('segment_gap', 2.0),
-            )
-            # Get font path for legacy content (if no segments)
-            if not segments:
-                font_path = self._font_manager.get_font_path(
-                    line.font_family, line.font_style
-                )
-                if font_path:
-                    line.font_path = font_path
-            config.text.lines.append(line)
-
-        config.text.style = TextStyle(text_cfg.get('style', 'raised'))
-        config.text.depth = text_cfg.get('depth', 2.0)
-        config.text.line_spacing = text_cfg.get('line_spacing', 1.2)
-        config.text.orientation = TextOrientation(text_cfg.get('orientation', 'horizontal'))
-        config.text.effect = TextEffect(text_cfg.get('effect', 'none'))
-        config.text.effect_size = text_cfg.get('effect_size', 0.3)
-
-        # Get base plate config
-        base_cfg = self._base_panel.get_config()
-
-        plate = base_cfg.get('plate', {})
-        config.plate.shape = PlateShape(plate.get('shape', 'rounded_rectangle'))
-        config.plate.width = plate.get('width', 120.0)
-        config.plate.height = plate.get('height', 35.0)
-        config.plate.thickness = plate.get('thickness', 4.0)
-        config.plate.corner_radius = plate.get('corner_radius', 5.0)
-        config.plate.auto_width = plate.get('auto_width', False)
-        config.plate.auto_height = plate.get('auto_height', False)
-        config.plate.padding_top = plate.get('padding_top', 5.0)
-        config.plate.padding_bottom = plate.get('padding_bottom', 5.0)
-        config.plate.padding_left = plate.get('padding_left', 10.0)
-        config.plate.padding_right = plate.get('padding_right', 10.0)
-        
-        sweep = base_cfg.get('sweeping', {})
-        config.sweeping.width = sweep.get('width', 120.0)
-        config.sweeping.height = sweep.get('height', 35.0)
-        config.sweeping.thickness = sweep.get('thickness', 4.0)
-        config.sweeping.curve_angle = sweep.get('curve_angle', 45.0)
-        config.sweeping.curve_radius = sweep.get('curve_radius', 80.0)
-        config.sweeping.base_type = sweep.get('base_type', 'pedestal')
-        
-        # Get mount config
-        mount_cfg = self._mount_panel.get_config()
-
-        config.mount.mount_type = MountType(mount_cfg.get('type', 'none'))
-
-        # Desk stand options
-        config.mount.stand_angle = mount_cfg.get('stand_angle', 25.0)
-        config.mount.stand_depth = mount_cfg.get('stand_depth', 30.0)
-        config.mount.stand_integrated = mount_cfg.get('stand_integrated', True)
-
-        # Screw hole options
-        pattern_map = {
-            'two_top': HolePattern.TWO_TOP,
-            'two_sides': HolePattern.TWO_SIDES,
-            'four_corners': HolePattern.FOUR_CORNERS,
-            'center_top': HolePattern.CENTER_TOP,
-        }
-        config.mount.hole_pattern = pattern_map.get(
-            mount_cfg.get('hole_pattern', 'two_top'),
-            HolePattern.TWO_TOP
+        return self._config_builder.build(
+            self._text_panel,
+            self._base_panel,
+            self._mount_panel,
+            self._svg_panel
         )
-        config.mount.hole_diameter = mount_cfg.get('hole_diameter', 4.0)
-        config.mount.hole_countersink = mount_cfg.get('countersink', True)
-        config.mount.hole_edge_distance = mount_cfg.get('hole_edge_distance', 8.0)
-
-        # Keyhole options
-        config.mount.keyhole_large_diameter = mount_cfg.get('keyhole_large', 10.0)
-        config.mount.keyhole_small_diameter = mount_cfg.get('keyhole_small', 5.0)
-        config.mount.keyhole_length = mount_cfg.get('keyhole_length', 12.0)
-
-        # Magnet options - parse size string like "8x3mm Disc"
-        magnet_size_str = mount_cfg.get('magnet_size', '8x3mm Disc')
-        magnet_diameter = 8.0
-        magnet_height = 3.0
-        if 'x' in magnet_size_str:
-            try:
-                parts = magnet_size_str.split('x')
-                magnet_diameter = float(parts[0])
-                magnet_height = float(parts[1].replace('mm', '').replace(' Disc', '').replace(' Cube', ''))
-            except:
-                pass
-        config.mount.magnet_size = MagnetSize(magnet_diameter, magnet_height, magnet_size_str)
-        config.mount.magnet_count = mount_cfg.get('magnet_count', 2)
-        config.mount.magnet_edge_distance = mount_cfg.get('magnet_edge', 10.0)
-
-        # Hanging hole options
-        config.mount.hanging_hole_diameter = mount_cfg.get('hanging_diameter', 5.0)
-        config.mount.hanging_hole_position = mount_cfg.get('hanging_position', 'top_center')
-
-        # Get SVG elements
-        config.svg_elements = self._svg_panel.get_elements()
-
-        # Get QR code elements
-        config.qr_elements = self._svg_panel.get_qr_elements()
-
-        return config
     
     def _apply_config(self, data: dict):
         """Apply configuration data to UI panels."""
@@ -561,6 +492,51 @@ class MainWindow(QMainWindow):
 
         if 'svg_elements' in data:
             self._svg_panel.set_config({'elements': data['svg_elements']})
+
+    def _on_undo(self):
+        """Handle Edit > Undo."""
+        state = self._undo_manager.undo()
+        if state:
+            self._restore_state(state)
+
+    def _on_redo(self):
+        """Handle Edit > Redo."""
+        state = self._undo_manager.redo()
+        if state:
+            self._restore_state(state)
+
+    def _restore_state(self, state: dict):
+        """Restore UI state from undo/redo."""
+        # Set flag to prevent saving this restoration as a new state
+        self._is_restoring_state = True
+        try:
+            self._apply_config(state)
+            self._update_preview()
+        finally:
+            self._is_restoring_state = False
+
+    def _update_undo_redo_state(self):
+        """Update undo/redo menu action and button enabled states."""
+        can_undo = self._undo_manager.can_undo()
+        can_redo = self._undo_manager.can_redo()
+
+        # Update menu actions
+        if hasattr(self, '_undo_action'):
+            self._undo_action.setEnabled(can_undo)
+            desc = self._undo_manager.get_undo_description()
+            self._undo_action.setText(f"&Undo {desc}" if desc else "&Undo")
+
+        if hasattr(self, '_redo_action'):
+            self._redo_action.setEnabled(can_redo)
+            desc = self._undo_manager.get_redo_description()
+            self._redo_action.setText(f"&Redo {desc}" if desc else "&Redo")
+
+        # Update buttons below viewport
+        if hasattr(self, '_undo_btn'):
+            self._undo_btn.setEnabled(can_undo)
+
+        if hasattr(self, '_redo_btn'):
+            self._redo_btn.setEnabled(can_redo)
 
     def _set_status(self, message: str, is_error: bool = False):
         """Set status bar message, tracking errors for copy button."""
@@ -836,8 +812,58 @@ class MainWindow(QMainWindow):
         For text, we trigger an immediate preview update with reduced debounce
         since text geometry is complex and can't easily be transformed like SVG.
         """
-        # Trigger immediate update (100ms debounce for responsive but not excessive updates)
-        self._update_timer.start(100)
+        # Trigger immediate update (30ms debounce for responsive feedback)
+        self._update_timer.start(30)
+
+    def _on_dimension_dragging(self):
+        """Handle real-time dimension update during slider drag.
+
+        Triggers fast preview updates for baseplate and other dimension changes.
+        """
+        # Trigger immediate update (30ms debounce for responsive feedback)
+        self._update_timer.start(30)
+
+    def _on_baseplate_drag_started(self):
+        """Handle start of baseplate dimension slider drag.
+
+        Creates a baseplate overlay for real-time scale preview.
+        """
+        if not self._preview_manager:
+            return
+
+        # Get the current baseplate geometry from the builder
+        base_geom = self._nameplate_builder.get_base_geometry()
+        if base_geom is None:
+            return
+
+        # Get current dimensions
+        width, height, thickness = self._base_panel.get_current_dimensions()
+
+        # Create the overlay with current geometry and base dimensions
+        self._preview_manager.add_baseplate_overlay(base_geom, width, height, thickness)
+
+    def _on_baseplate_scale_dragging(self, width: float, height: float, thickness: float):
+        """Handle real-time baseplate scale update during slider drag.
+
+        Updates the baseplate overlay scale instantly without geometry rebuild.
+        """
+        if not self._preview_manager:
+            return
+
+        # Update overlay scale if it exists
+        if self._preview_manager.has_baseplate_overlay():
+            self._preview_manager.update_baseplate_scale(width, height, thickness)
+
+    def _on_baseplate_drag_ended(self):
+        """Handle end of baseplate dimension slider drag.
+
+        Removes the overlay and triggers full geometry rebuild.
+        """
+        if self._preview_manager:
+            self._preview_manager.remove_baseplate_overlay()
+
+        # Trigger full geometry rebuild with final values
+        self._update_timer.start(50)
 
     def _on_toggle_debug_logging(self, checked: bool):
         """Toggle debug logging on/off."""

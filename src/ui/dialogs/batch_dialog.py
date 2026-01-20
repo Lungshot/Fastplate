@@ -4,22 +4,18 @@ Dialog for generating multiple nameplates from a list.
 """
 
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLabel, QTextEdit, QPushButton, QCheckBox,
-    QDialogButtonBox, QFileDialog, QProgressBar, QLineEdit,
-    QSpinBox, QMessageBox
+    QFileDialog, QLineEdit, QMessageBox
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt
 from ui.widgets.slider_spin import FocusComboBox
+from ui.dialogs.base_batch_dialog import BaseBatchDialog, BaseBatchWorker
 from pathlib import Path
 
 
-class BatchWorker(QThread):
+class BatchWorker(BaseBatchWorker):
     """Worker thread for batch generation."""
-
-    progress = pyqtSignal(int, int, str)  # current, total, name
-    finished = pyqtSignal(list)  # list of exported files
-    error = pyqtSignal(str)
 
     def __init__(self, names: list, builder, output_dir: str, format: str,
                  base_config: dict):
@@ -29,11 +25,6 @@ class BatchWorker(QThread):
         self.output_dir = output_dir
         self.format = format
         self.base_config = base_config
-        self._cancelled = False
-
-    def cancel(self):
-        """Cancel the batch operation."""
-        self._cancelled = True
 
     def run(self):
         """Run the batch generation."""
@@ -41,10 +32,10 @@ class BatchWorker(QThread):
         total = len(self.names)
 
         for i, name in enumerate(self.names):
-            if self._cancelled:
+            if self.is_cancelled:
                 break
 
-            self.progress.emit(i + 1, total, name)
+            self.progress.emit(i + 1, total, f"Generating: {name} ({i + 1}/{total})")
 
             try:
                 # Update first text line with current name
@@ -75,23 +66,21 @@ class BatchWorker(QThread):
         self.finished.emit(exported)
 
 
-class BatchDialog(QDialog):
+class BatchDialog(BaseBatchDialog):
     """Dialog for batch nameplate generation."""
 
     def __init__(self, nameplate_builder, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Batch Generation")
-        self.setMinimumSize(500, 500)
-
+        super().__init__(parent, title="Batch Generation", min_width=500, min_height=500)
         self._builder = nameplate_builder
-        self._worker = None
         self._output_dir = ""
+        self._names = []
 
         self._setup_ui()
 
     def _setup_ui(self):
         """Set up the dialog UI."""
-        layout = QVBoxLayout(self)
+        # Initialize base UI components
+        self._setup_base_ui()
 
         # Input section
         input_group = QGroupBox("Names/Text List")
@@ -123,7 +112,7 @@ class BatchDialog(QDialog):
 
         self._names_edit.textChanged.connect(self._update_count)
 
-        layout.addWidget(input_group)
+        self._main_layout.addWidget(input_group)
 
         # Output section
         output_group = QGroupBox("Output Settings")
@@ -146,7 +135,7 @@ class BatchDialog(QDialog):
         self._format_combo.addItems(["STL", "STEP", "3MF"])
         output_layout.addRow("File format:", self._format_combo)
 
-        layout.addWidget(output_group)
+        self._main_layout.addWidget(output_group)
 
         # Options
         options_group = QGroupBox("Options")
@@ -164,45 +153,18 @@ class BatchDialog(QDialog):
         self._overwrite_check.setChecked(False)
         options_layout.addWidget(self._overwrite_check)
 
-        layout.addWidget(options_group)
+        self._main_layout.addWidget(options_group)
 
-        # Progress section
-        progress_group = QGroupBox("Progress")
-        progress_layout = QVBoxLayout(progress_group)
+        # Add progress section and buttons from base class
+        self._finalize_layout()
 
-        self._progress_bar = QProgressBar()
-        self._progress_bar.setTextVisible(True)
-        progress_layout.addWidget(self._progress_bar)
-
-        self._status_label = QLabel("Ready")
-        progress_layout.addWidget(self._status_label)
-
-        layout.addWidget(progress_group)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-
-        self._generate_btn = QPushButton("Generate All")
-        self._generate_btn.clicked.connect(self._start_generation)
-        button_layout.addWidget(self._generate_btn)
-
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.clicked.connect(self._cancel_generation)
-        self._cancel_btn.setEnabled(False)
-        button_layout.addWidget(self._cancel_btn)
-
-        button_layout.addStretch()
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.reject)
-        button_layout.addWidget(close_btn)
-
-        layout.addLayout(button_layout)
+    def _get_action_button_text(self) -> str:
+        return "Generate All"
 
     def _update_count(self):
         """Update the names count label."""
-        names = self._get_names()
-        self._count_label.setText(f"Names: {len(names)}")
+        self._names = self._get_names()
+        self._count_label.setText(f"Names: {len(self._names)}")
 
     def _get_names(self) -> list:
         """Get list of names from text edit."""
@@ -248,57 +210,38 @@ class BatchDialog(QDialog):
             self._output_dir = directory
             self._dir_edit.setText(directory)
 
-    def _start_generation(self):
-        """Start the batch generation process."""
-        names = self._get_names()
-        if not names:
+    def _validate_inputs(self) -> bool:
+        """Validate inputs before starting."""
+        self._names = self._get_names()
+        if not self._names:
             QMessageBox.warning(self, "No Names", "Please enter at least one name.")
-            return
+            return False
 
         if not self._output_dir:
             QMessageBox.warning(self, "No Output", "Please select an output directory.")
-            return
+            return False
 
-        # Disable UI
-        self._generate_btn.setEnabled(False)
-        self._cancel_btn.setEnabled(True)
-        self._names_edit.setEnabled(False)
+        return True
 
-        # Set up progress
-        self._progress_bar.setMaximum(len(names))
-        self._progress_bar.setValue(0)
+    def _get_total_items(self) -> int:
+        return len(self._names)
 
-        # Get format
+    def _create_worker(self) -> BatchWorker:
+        """Create the batch worker."""
         format_map = {"STL": "stl", "STEP": "step", "3MF": "3mf"}
         export_format = format_map.get(self._format_combo.currentText(), "stl")
 
-        # Create and start worker
-        self._worker = BatchWorker(
-            names, self._builder, self._output_dir, export_format,
-            {}
+        return BatchWorker(
+            self._names, self._builder, self._output_dir, export_format, {}
         )
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished.connect(self._on_finished)
-        self._worker.error.connect(self._on_error)
-        self._worker.start()
 
-    def _cancel_generation(self):
-        """Cancel the batch generation."""
-        if self._worker:
-            self._worker.cancel()
-            self._status_label.setText("Cancelling...")
+    def _set_ui_running_state(self, running: bool):
+        """Set UI state for running/not running."""
+        super()._set_ui_running_state(running)
+        self._names_edit.setEnabled(not running)
 
-    def _on_progress(self, current: int, total: int, name: str):
-        """Handle progress update."""
-        self._progress_bar.setValue(current)
-        self._status_label.setText(f"Generating: {name} ({current}/{total})")
-
-    def _on_finished(self, exported: list):
+    def _on_operation_finished(self, exported: list):
         """Handle batch completion."""
-        self._generate_btn.setEnabled(True)
-        self._cancel_btn.setEnabled(False)
-        self._names_edit.setEnabled(True)
-
         if exported:
             self._status_label.setText(f"Complete! Generated {len(exported)} files.")
             QMessageBox.information(
@@ -309,11 +252,3 @@ class BatchDialog(QDialog):
         else:
             self._status_label.setText("No files generated.")
             QMessageBox.warning(self, "Batch Failed", "No files were generated.")
-
-    def _on_error(self, error: str):
-        """Handle error."""
-        self._generate_btn.setEnabled(True)
-        self._cancel_btn.setEnabled(False)
-        self._names_edit.setEnabled(True)
-        self._status_label.setText(f"Error: {error}")
-        QMessageBox.warning(self, "Error", error)

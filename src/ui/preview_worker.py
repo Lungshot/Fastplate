@@ -46,6 +46,15 @@ class GeometryCache:
                     'offset_y': getattr(text, 'offset_y', 0),
                     'effect': str(getattr(text, 'effect', '')),
                     'effect_size': getattr(text, 'effect_size', 0),
+                    # Arc/Sweeping text settings
+                    'arc_enabled': getattr(text, 'arc_enabled', False),
+                    'arc_radius': getattr(text, 'arc_radius', 50.0),
+                    'arc_angle': getattr(text, 'arc_angle', 180.0),
+                    'arc_direction': getattr(text, 'arc_direction', 'counterclockwise'),
+                    # Sweeping text settings
+                    'sweep_radius': getattr(text, 'sweep_radius', 13.0),
+                    'sweep_angle': getattr(text, 'sweep_angle', 65.0),
+                    'sweep_direction': getattr(text, 'sweep_direction', 'up'),
                 }
 
                 # Add line content
@@ -78,6 +87,28 @@ class GeometryCache:
                     'height': getattr(plate, 'height', 0),
                     'thickness': getattr(plate, 'thickness', 0),
                     'corner_radius': getattr(plate, 'corner_radius', 0),
+                    # Auto-sizing
+                    'auto_width': getattr(plate, 'auto_width', False),
+                    'auto_height': getattr(plate, 'auto_height', False),
+                    # Padding
+                    'padding_top': getattr(plate, 'padding_top', 0),
+                    'padding_bottom': getattr(plate, 'padding_bottom', 0),
+                    'padding_left': getattr(plate, 'padding_left', 0),
+                    'padding_right': getattr(plate, 'padding_right', 0),
+                    # Edge finishing
+                    'edge_style': str(getattr(plate, 'edge_style', '')),
+                    'edge_size': getattr(plate, 'edge_size', 0),
+                    'edge_top_only': getattr(plate, 'edge_top_only', True),
+                    # Layered plate
+                    'layered_enabled': getattr(plate, 'layered_enabled', False),
+                    'layer_count': getattr(plate, 'layer_count', 2),
+                    'layer_offset': getattr(plate, 'layer_offset', 0),
+                    'layer_shrink': getattr(plate, 'layer_shrink', 0),
+                    # Inset panel
+                    'inset_enabled': getattr(plate, 'inset_enabled', False),
+                    'inset_depth': getattr(plate, 'inset_depth', 0),
+                    'inset_margin': getattr(plate, 'inset_margin', 0),
+                    'inset_corner_radius': getattr(plate, 'inset_corner_radius', 0),
                 }
                 key_parts.append(('plate', plate_data))
 
@@ -89,9 +120,21 @@ class GeometryCache:
                     'style': str(getattr(border, 'style', '')),
                     'width': getattr(border, 'width', 0),
                     'height': getattr(border, 'height', 0),
-                    'inset': getattr(border, 'inset', 0),
+                    'offset': getattr(border, 'offset', 0),
                 }
                 key_parts.append(('border', border_data))
+
+            # Pattern config
+            if hasattr(config, 'pattern'):
+                pattern = config.pattern
+                pattern_data = {
+                    'type': str(getattr(pattern, 'pattern_type', '')),
+                    'spacing': getattr(pattern, 'spacing', 0),
+                    'size': getattr(pattern, 'size', 0),
+                    'depth': getattr(pattern, 'depth', 0),
+                    'angle': getattr(pattern, 'angle', 0),
+                }
+                key_parts.append(('pattern', pattern_data))
 
             # Mount config
             if hasattr(config, 'mount'):

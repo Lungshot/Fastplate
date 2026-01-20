@@ -104,6 +104,10 @@ class Viewer3DWidget(QWidget):
         self._svg_overlay_items = {}  # id -> GLMeshItem
         self._svg_overlay_data = {}   # id -> (vertices, faces, base_geometry)
 
+        # Baseplate overlay system for real-time dimension preview during drag
+        self._baseplate_overlay_item = None  # GLMeshItem for baseplate preview
+        self._baseplate_overlay_data = None  # (vertices, faces, base_width, base_height, base_thickness)
+
         self._setup_ui()
     
     def _setup_ui(self):
@@ -675,6 +679,101 @@ class Viewer3DWidget(QWidget):
 
     # --- End SVG Overlay System ---
 
+    # --- Baseplate Overlay System for Real-Time Dimension Preview ---
+
+    def add_baseplate_overlay(self, geometry, base_width: float, base_height: float, base_thickness: float):
+        """
+        Add a baseplate overlay mesh for real-time dimension preview during drag.
+
+        Args:
+            geometry: CadQuery geometry for the baseplate
+            base_width: Original width when drag started
+            base_height: Original height when drag started
+            base_thickness: Original thickness when drag started
+        """
+        if not PYQTGRAPH_AVAILABLE or geometry is None:
+            return
+
+        # Tessellate geometry
+        vertices, faces = self._tessellate_geometry(geometry)
+        if vertices is None or faces is None:
+            return
+
+        # Remove existing overlay if present
+        self.remove_baseplate_overlay()
+
+        # Use a semi-transparent highlight color for the overlay
+        overlay_color = (0.6, 0.8, 1.0, 0.8)  # Light blue, slightly transparent
+
+        # Create mesh item
+        mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+        mesh_item = gl.GLMeshItem(
+            meshdata=mesh_data,
+            smooth=True,
+            shader=self._current_shader,
+            color=overlay_color,
+            drawFaces=True,
+            drawEdges=True,
+            edgeColor=(0.3, 0.5, 0.7, 0.5),
+            glOptions='translucent'
+        )
+        self._view.addItem(mesh_item)
+
+        # Store references
+        self._baseplate_overlay_item = mesh_item
+        self._baseplate_overlay_data = (vertices.copy(), faces.copy(), base_width, base_height, base_thickness)
+
+    def update_baseplate_scale(self, new_width: float, new_height: float, new_thickness: float):
+        """
+        Update the baseplate overlay scale without rebuilding mesh.
+        This provides instant visual feedback during slider drag.
+
+        Args:
+            new_width: Current width from slider
+            new_height: Current height from slider
+            new_thickness: Current thickness from slider
+        """
+        if self._baseplate_overlay_item is None or self._baseplate_overlay_data is None:
+            return
+
+        mesh_item = self._baseplate_overlay_item
+
+        # Guard against use-after-delete
+        if sip.isdeleted(mesh_item):
+            self._baseplate_overlay_item = None
+            self._baseplate_overlay_data = None
+            return
+
+        # Get base dimensions
+        _, _, base_width, base_height, base_thickness = self._baseplate_overlay_data
+
+        # Calculate scale factors (avoid division by zero)
+        scale_x = new_width / base_width if base_width > 0 else 1.0
+        scale_y = new_height / base_height if base_height > 0 else 1.0
+        scale_z = new_thickness / base_thickness if base_thickness > 0 else 1.0
+
+        # Create transform matrix with scale
+        from PyQt5.QtGui import QMatrix4x4
+        transform = QMatrix4x4()
+        transform.scale(scale_x, scale_y, scale_z)
+
+        # Apply transform - this is instant, no geometry rebuild
+        mesh_item.setTransform(transform)
+
+    def remove_baseplate_overlay(self):
+        """Remove the baseplate overlay."""
+        if self._baseplate_overlay_item is not None:
+            if PYQTGRAPH_AVAILABLE and not sip.isdeleted(self._baseplate_overlay_item):
+                self._view.removeItem(self._baseplate_overlay_item)
+            self._baseplate_overlay_item = None
+            self._baseplate_overlay_data = None
+
+    def has_baseplate_overlay(self) -> bool:
+        """Check if a baseplate overlay exists."""
+        return self._baseplate_overlay_item is not None
+
+    # --- End Baseplate Overlay System ---
+
     def reset_view(self):
         """Reset to default isometric view centered on model."""
         if PYQTGRAPH_AVAILABLE:
@@ -780,3 +879,21 @@ class PreviewManager:
     def has_svg_overlay(self, svg_id: str) -> bool:
         """Check if an SVG overlay exists."""
         return self.viewer.has_svg_overlay(svg_id)
+
+    # --- Baseplate Overlay Methods for Real-Time Dimension Preview ---
+
+    def add_baseplate_overlay(self, geometry, base_width: float, base_height: float, base_thickness: float):
+        """Add a baseplate overlay for real-time dimension preview during drag."""
+        self.viewer.add_baseplate_overlay(geometry, base_width, base_height, base_thickness)
+
+    def update_baseplate_scale(self, new_width: float, new_height: float, new_thickness: float):
+        """Update baseplate overlay scale instantly without geometry rebuild."""
+        self.viewer.update_baseplate_scale(new_width, new_height, new_thickness)
+
+    def remove_baseplate_overlay(self):
+        """Remove the baseplate overlay."""
+        self.viewer.remove_baseplate_overlay()
+
+    def has_baseplate_overlay(self) -> bool:
+        """Check if a baseplate overlay exists."""
+        return self.viewer.has_baseplate_overlay()
