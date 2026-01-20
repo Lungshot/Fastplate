@@ -14,8 +14,9 @@ if str(src_path) not in sys.path:
 def main():
     """Main application entry point."""
     from PyQt5.QtWidgets import QApplication, QSplashScreen
-    from PyQt5.QtCore import Qt
+    from PyQt5.QtCore import Qt, QRectF
     from PyQt5.QtGui import QFont, QPixmap, QPainter, QColor, QFontDatabase
+    from PyQt5.QtSvg import QSvgRenderer
 
     # Enable high DPI scaling
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
@@ -23,9 +24,11 @@ def main():
 
     app = QApplication(sys.argv)
 
-    # Create splash screen
-    splash_pixmap = QPixmap(400, 200)
-    splash_pixmap.fill(QColor(35, 35, 35))
+    # Create splash screen with light grey background (sized for 80% larger logo)
+    splash_width = 540  # Reduced by 40% (20% each side)
+    splash_height = 450
+    splash_pixmap = QPixmap(splash_width, splash_height)
+    splash_pixmap.fill(QColor(200, 200, 200))  # Light grey background
 
     painter = QPainter(splash_pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
@@ -33,13 +36,32 @@ def main():
 
     # Draw border
     painter.setPen(QColor(42, 130, 218))
-    painter.drawRect(0, 0, 399, 199)
+    painter.drawRect(0, 0, splash_width - 1, splash_height - 1)
 
-    # Draw "Fastplate" text
-    font = QFont("Arial", 48, QFont.Bold)
-    painter.setFont(font)
-    painter.setPen(QColor(42, 130, 218))
-    painter.drawText(splash_pixmap.rect(), Qt.AlignCenter, "Fastplate")
+    # Load and draw SVG logo centered (80% larger than original)
+    svg_path = src_path / "resources" / "fastplate.svg"
+    if svg_path.exists():
+        svg_renderer = QSvgRenderer(str(svg_path))
+        if svg_renderer.isValid():
+            # SVG is A4 sized (210x297 viewBox) - scale to fill splash screen
+            # Use viewBox dimensions directly for proper scaling
+            viewbox_width = 210
+            viewbox_height = 297
+            # Scale to fill splash screen (SVG content will be centered within viewBox)
+            scale = min(splash_width / viewbox_width, splash_height / viewbox_height) * 1.8
+            scaled_width = viewbox_width * scale
+            scaled_height = viewbox_height * scale
+            # Center horizontally, shift down 15% vertically
+            x = (splash_width - scaled_width) / 2
+            y = (splash_height - scaled_height) / 2 + (splash_height * 0.15)
+            svg_renderer.render(painter, QRectF(x, y, scaled_width, scaled_height))
+    else:
+        # Fallback to text if SVG not found
+        font = QFont("Arial", 48, QFont.Bold)
+        painter.setFont(font)
+        painter.setPen(QColor(35, 35, 35))  # Dark text on light background
+        painter.drawText(splash_pixmap.rect(), Qt.AlignCenter, "Fastplate")
+
     painter.end()
 
     splash = QSplashScreen(splash_pixmap, Qt.WindowStaysOnTopHint)

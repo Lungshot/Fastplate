@@ -570,6 +570,10 @@ class TextPanel(QWidget):
     text_position_dragging = pyqtSignal(str, float)
     # Signal for real-time preview during any slider drag
     slider_dragging = pyqtSignal()
+    # Signals for real-time text scale preview (size, depth)
+    text_scale_dragging = pyqtSignal(float, float)
+    text_drag_started = pyqtSignal()
+    text_drag_ended = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -577,6 +581,7 @@ class TextPanel(QWidget):
         self._font_names = []
         self._line_widgets = []
         self._active_drag_count = 0
+        self._is_text_dragging = False
 
         self._setup_ui()
     
@@ -624,7 +629,9 @@ class TextPanel(QWidget):
         # Text depth
         self._depth_slider = SliderSpinBox("Depth:", 0.5, 10, 2, decimals=1, suffix=" mm")
         self._depth_slider.valueChanged.connect(self._on_changed)
-        self._depth_slider.dragging.connect(self._on_slider_dragging)
+        self._depth_slider.dragging.connect(self._on_text_scale_dragging)
+        self._depth_slider.dragStarted.connect(self._on_text_drag_started)
+        self._depth_slider.dragEnded.connect(self._on_text_drag_ended)
         style_layout.addWidget(self._depth_slider)
 
         # Line spacing
@@ -787,6 +794,42 @@ class TextPanel(QWidget):
     def _on_slider_dragging(self, value):
         """Emit slider_dragging for real-time preview during slider drag."""
         self.slider_dragging.emit()
+
+    def _on_text_scale_dragging(self, value):
+        """Emit text scale values for real-time transform-based preview."""
+        # Get average font size from first segment (approximation)
+        avg_size = 12.0  # Default
+        if self._line_widgets:
+            first_line = self._line_widgets[0]
+            if hasattr(first_line, '_segment_widgets') and first_line._segment_widgets:
+                first_seg = first_line._segment_widgets[0]
+                if hasattr(first_seg, '_size_slider'):
+                    avg_size = first_seg._size_slider.value()
+        depth = self._depth_slider.value()
+        self.text_scale_dragging.emit(avg_size, depth)
+
+    def _on_text_drag_started(self):
+        """Handle text depth/size slider drag start."""
+        if not self._is_text_dragging:
+            self._is_text_dragging = True
+            self.text_drag_started.emit()
+
+    def _on_text_drag_ended(self):
+        """Handle text depth/size slider drag end."""
+        if self._is_text_dragging:
+            self._is_text_dragging = False
+            self.text_drag_ended.emit()
+
+    def get_current_text_params(self) -> tuple:
+        """Get current text size and depth for overlay creation."""
+        avg_size = 12.0
+        if self._line_widgets:
+            first_line = self._line_widgets[0]
+            if hasattr(first_line, '_segment_widgets') and first_line._segment_widgets:
+                first_seg = first_line._segment_widgets[0]
+                if hasattr(first_seg, '_size_slider'):
+                    avg_size = first_seg._size_slider.value()
+        return (avg_size, self._depth_slider.value())
 
     def _on_drag_started(self):
         """Track when a position drag starts."""

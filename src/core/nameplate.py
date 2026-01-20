@@ -155,6 +155,7 @@ class NameplateBuilder:
         # Generated geometry cache
         self._base_geometry: Optional[cq.Workplane] = None
         self._text_geometry: Optional[cq.Workplane] = None
+        self._border_geometry: Optional[cq.Workplane] = None
         self._combined_geometry: Optional[cq.Workplane] = None
         self._needs_rebuild = True
 
@@ -320,6 +321,8 @@ class NameplateBuilder:
         border_geometry = self._border_gen.generate(
             plate_width, plate_height, plate_thickness, cfg.border
         )
+        # Store for real-time preview access
+        self._border_geometry = border_geometry
         print(f"[Border] Border geometry: {border_geometry is not None}")
 
         if border_geometry is not None:
@@ -684,7 +687,13 @@ class NameplateBuilder:
         if self._needs_rebuild:
             self.build()
         return self._text_geometry
-    
+
+    def get_border_geometry(self) -> Optional[cq.Workplane]:
+        """Get just the border geometry."""
+        if self._needs_rebuild:
+            self.build()
+        return self._border_geometry
+
     def export(self, filepath: str, options: Optional[ExportOptions] = None) -> bool:
         """
         Export the nameplate to file.

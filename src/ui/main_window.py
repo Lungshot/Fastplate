@@ -350,6 +350,15 @@ class MainWindow(QMainWindow):
         self._text_panel.text_position_dragging.connect(self._on_text_position_dragging)
         # Real-time text slider preview during drag (depth, spacing, effect, arc)
         self._text_panel.slider_dragging.connect(self._on_dimension_dragging)
+        # Real-time text scale preview for depth
+        self._text_panel.text_scale_dragging.connect(self._on_text_scale_dragging)
+        self._text_panel.text_drag_started.connect(self._on_text_drag_started)
+        self._text_panel.text_drag_ended.connect(self._on_text_drag_ended)
+
+        # Real-time border scale preview
+        self._base_panel.border_scale_dragging.connect(self._on_border_scale_dragging)
+        self._base_panel.border_drag_started.connect(self._on_border_drag_started)
+        self._base_panel.border_drag_ended.connect(self._on_border_drag_ended)
 
         # Google icon selection from text panel
         self._text_panel.google_icon_selected.connect(self._on_google_icon_selected)
@@ -828,19 +837,18 @@ class MainWindow(QMainWindow):
     def _on_text_position_dragging(self, segment_id: str, v_offset: float):
         """Handle real-time text position update during slider drag.
 
-        For text, we trigger an immediate preview update with reduced debounce
-        since text geometry is complex and can't easily be transformed like SVG.
+        For text, we trigger an immediate preview update.
         """
-        # Trigger immediate update (30ms debounce for responsive feedback)
-        self._update_timer.start(30)
+        # Trigger immediate update (no debounce for maximum responsiveness)
+        self._update_timer.start(0)
 
     def _on_dimension_dragging(self):
         """Handle real-time dimension update during slider drag.
 
-        Triggers fast preview updates for baseplate and other dimension changes.
+        Triggers immediate preview updates for maximum responsiveness.
         """
-        # Trigger immediate update (30ms debounce for responsive feedback)
-        self._update_timer.start(30)
+        # Trigger immediate update (no debounce for maximum responsiveness)
+        self._update_timer.start(0)
 
     def _on_baseplate_drag_started(self):
         """Handle start of baseplate dimension slider drag.
@@ -880,6 +888,94 @@ class MainWindow(QMainWindow):
         """
         if self._preview_manager:
             self._preview_manager.remove_baseplate_overlay()
+
+        # Trigger full geometry rebuild with final values
+        self._update_timer.start(50)
+
+    # --- Text Overlay Handlers ---
+
+    def _on_text_drag_started(self):
+        """Handle start of text depth/size slider drag.
+
+        Creates a text overlay for real-time scale preview.
+        """
+        if not self._preview_manager:
+            return
+
+        # Get the current text geometry from the builder
+        text_geom = self._nameplate_builder.get_text_geometry()
+        if text_geom is None:
+            return
+
+        # Get current text params
+        size, depth = self._text_panel.get_current_text_params()
+
+        # Create the overlay with current geometry and base params
+        self._preview_manager.add_text_overlay(text_geom, size, depth)
+
+    def _on_text_scale_dragging(self, size: float, depth: float):
+        """Handle real-time text scale update during slider drag.
+
+        Updates the text overlay scale instantly without geometry rebuild.
+        """
+        if not self._preview_manager:
+            return
+
+        # Update overlay scale if it exists
+        if self._preview_manager.has_text_overlay():
+            self._preview_manager.update_text_scale(size, depth)
+
+    def _on_text_drag_ended(self):
+        """Handle end of text depth/size slider drag.
+
+        Removes the overlay and triggers full geometry rebuild.
+        """
+        if self._preview_manager:
+            self._preview_manager.remove_text_overlay()
+
+        # Trigger full geometry rebuild with final values
+        self._update_timer.start(50)
+
+    # --- Border Overlay Handlers ---
+
+    def _on_border_drag_started(self):
+        """Handle start of border width/height slider drag.
+
+        Creates a border overlay for real-time scale preview.
+        """
+        if not self._preview_manager:
+            return
+
+        # Get the current border geometry from the builder
+        border_geom = self._nameplate_builder.get_border_geometry()
+        if border_geom is None:
+            return
+
+        # Get current border params
+        width, height = self._base_panel.get_current_border_params()
+
+        # Create the overlay with current geometry and base params
+        self._preview_manager.add_border_overlay(border_geom, width, height)
+
+    def _on_border_scale_dragging(self, width: float, height: float):
+        """Handle real-time border scale update during slider drag.
+
+        Updates the border overlay scale instantly without geometry rebuild.
+        """
+        if not self._preview_manager:
+            return
+
+        # Update overlay scale if it exists
+        if self._preview_manager.has_border_overlay():
+            self._preview_manager.update_border_scale(width, height)
+
+    def _on_border_drag_ended(self):
+        """Handle end of border width/height slider drag.
+
+        Removes the overlay and triggers full geometry rebuild.
+        """
+        if self._preview_manager:
+            self._preview_manager.remove_border_overlay()
 
         # Trigger full geometry rebuild with final values
         self._update_timer.start(50)

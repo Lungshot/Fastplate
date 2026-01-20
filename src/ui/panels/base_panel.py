@@ -25,11 +25,16 @@ class BasePlatePanel(QWidget):
     # Signals for drag start/end to manage overlay lifecycle
     dimension_drag_started = pyqtSignal()
     dimension_drag_ended = pyqtSignal()
+    # Border scale dragging signals: (width, height)
+    border_scale_dragging = pyqtSignal(float, float)
+    border_drag_started = pyqtSignal()
+    border_drag_ended = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._active_drag_count = 0
         self._is_dimension_dragging = False
+        self._is_border_dragging = False
         self._setup_ui()
     
     def _setup_ui(self):
@@ -218,16 +223,19 @@ class BasePlatePanel(QWidget):
         # Pattern options (hidden when None)
         self._pattern_spacing = SliderSpinBox("Spacing:", 2, 20, 5, decimals=1, suffix=" mm")
         self._pattern_spacing.valueChanged.connect(self._on_changed)
+        self._pattern_spacing.dragging.connect(self._on_dimension_dragging)
         self._pattern_spacing.setVisible(False)
         pattern_layout.addWidget(self._pattern_spacing)
 
         self._pattern_size = SliderSpinBox("Element Size:", 0.5, 5, 1, decimals=1, suffix=" mm")
         self._pattern_size.valueChanged.connect(self._on_changed)
+        self._pattern_size.dragging.connect(self._on_dimension_dragging)
         self._pattern_size.setVisible(False)
         pattern_layout.addWidget(self._pattern_size)
 
         self._pattern_depth = SliderSpinBox("Depth:", 0.1, 1.0, 0.3, decimals=2, suffix=" mm")
         self._pattern_depth.valueChanged.connect(self._on_changed)
+        self._pattern_depth.dragging.connect(self._on_dimension_dragging)
         self._pattern_depth.setVisible(False)
         pattern_layout.addWidget(self._pattern_depth)
 
@@ -279,12 +287,16 @@ class BasePlatePanel(QWidget):
 
         self._border_width_slider = SliderSpinBox("Width:", 1, 10, 3, decimals=1, suffix=" mm")
         self._border_width_slider.valueChanged.connect(self._on_changed)
-        self._border_width_slider.dragging.connect(self._on_dimension_dragging)
+        self._border_width_slider.dragging.connect(self._on_border_scale_dragging)
+        self._border_width_slider.dragStarted.connect(self._on_border_drag_started)
+        self._border_width_slider.dragEnded.connect(self._on_border_drag_ended)
         border_layout.addWidget(self._border_width_slider)
 
         self._border_height_slider = SliderSpinBox("Height:", 0.5, 3, 1.5, decimals=1, suffix=" mm")
         self._border_height_slider.valueChanged.connect(self._on_changed)
-        self._border_height_slider.dragging.connect(self._on_dimension_dragging)
+        self._border_height_slider.dragging.connect(self._on_border_scale_dragging)
+        self._border_height_slider.dragStarted.connect(self._on_border_drag_started)
+        self._border_height_slider.dragEnded.connect(self._on_border_drag_ended)
         border_layout.addWidget(self._border_height_slider)
 
         self._border_offset_slider = SliderSpinBox("Offset:", 1, 15, 2, decimals=1, suffix=" mm")
@@ -472,6 +484,31 @@ class BasePlatePanel(QWidget):
             self._width_slider.value(),
             self._height_slider.value(),
             self._thickness_slider.value()
+        )
+
+    def _on_border_scale_dragging(self, value):
+        """Emit border scale values for real-time transform-based preview."""
+        width = self._border_width_slider.value()
+        height = self._border_height_slider.value()
+        self.border_scale_dragging.emit(width, height)
+
+    def _on_border_drag_started(self):
+        """Handle border slider drag start."""
+        if not self._is_border_dragging:
+            self._is_border_dragging = True
+            self.border_drag_started.emit()
+
+    def _on_border_drag_ended(self):
+        """Handle border slider drag end."""
+        if self._is_border_dragging:
+            self._is_border_dragging = False
+            self.border_drag_ended.emit()
+
+    def get_current_border_params(self) -> tuple:
+        """Get current border width and height for overlay creation."""
+        return (
+            self._border_width_slider.value(),
+            self._border_height_slider.value()
         )
 
     def _on_pattern_changed(self, pattern_text: str):

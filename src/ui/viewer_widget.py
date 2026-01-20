@@ -108,6 +108,14 @@ class Viewer3DWidget(QWidget):
         self._baseplate_overlay_item = None  # GLMeshItem for baseplate preview
         self._baseplate_overlay_data = None  # (vertices, faces, base_width, base_height, base_thickness)
 
+        # Text overlay system for real-time text size/depth preview during drag
+        self._text_overlay_item = None  # GLMeshItem for text preview
+        self._text_overlay_data = None  # (vertices, faces, base_size, base_depth)
+
+        # Border overlay system for real-time border dimension preview during drag
+        self._border_overlay_item = None  # GLMeshItem for border preview
+        self._border_overlay_data = None  # (vertices, faces, base_width, base_height)
+
         self._setup_ui()
     
     def _setup_ui(self):
@@ -774,6 +782,224 @@ class Viewer3DWidget(QWidget):
 
     # --- End Baseplate Overlay System ---
 
+    # --- Text Overlay System for Real-Time Size/Depth Preview ---
+
+    def add_text_overlay(self, geometry, base_size: float, base_depth: float):
+        """
+        Add a text overlay mesh for real-time size/depth preview during drag.
+
+        Args:
+            geometry: CadQuery geometry for the text
+            base_size: Original font size when drag started
+            base_depth: Original depth when drag started
+        """
+        if not PYQTGRAPH_AVAILABLE or geometry is None:
+            return
+
+        # Tessellate geometry
+        vertices, faces = self._tessellate_geometry(geometry)
+        if vertices is None or faces is None:
+            return
+
+        # Remove existing overlay if present
+        self.remove_text_overlay()
+
+        # Use a highlight color for the overlay
+        overlay_color = (1.0, 0.9, 0.5, 0.9)  # Golden yellow for text
+
+        # Create mesh item
+        mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+        mesh_item = gl.GLMeshItem(
+            meshdata=mesh_data,
+            smooth=True,
+            shader=self._current_shader,
+            color=overlay_color,
+            drawFaces=True,
+            drawEdges=True,
+            edgeColor=(0.7, 0.6, 0.3, 0.5),
+            glOptions='translucent'
+        )
+        self._view.addItem(mesh_item)
+
+        # Store references
+        self._text_overlay_item = mesh_item
+        self._text_overlay_data = (vertices.copy(), faces.copy(), base_size, base_depth)
+
+    def update_text_scale(self, new_size: float, new_depth: float):
+        """
+        Update the text overlay scale without rebuilding mesh.
+        This provides instant visual feedback during slider drag.
+
+        Args:
+            new_size: Current font size from slider
+            new_depth: Current depth from slider
+        """
+        if self._text_overlay_item is None or self._text_overlay_data is None:
+            return
+
+        mesh_item = self._text_overlay_item
+
+        # Guard against use-after-delete
+        if sip.isdeleted(mesh_item):
+            self._text_overlay_item = None
+            self._text_overlay_data = None
+            return
+
+        # Get base dimensions
+        _, _, base_size, base_depth = self._text_overlay_data
+
+        # Calculate scale factors (avoid division by zero)
+        # Text size affects X and Y uniformly
+        size_scale = new_size / base_size if base_size > 0 else 1.0
+        depth_scale = new_depth / base_depth if base_depth > 0 else 1.0
+
+        # Create transform matrix with scale
+        from PyQt5.QtGui import QMatrix4x4
+        transform = QMatrix4x4()
+        transform.scale(size_scale, size_scale, depth_scale)
+
+        # Apply transform - this is instant, no geometry rebuild
+        mesh_item.setTransform(transform)
+
+    def remove_text_overlay(self):
+        """Remove the text overlay."""
+        if self._text_overlay_item is not None:
+            if PYQTGRAPH_AVAILABLE and not sip.isdeleted(self._text_overlay_item):
+                self._view.removeItem(self._text_overlay_item)
+            self._text_overlay_item = None
+            self._text_overlay_data = None
+
+    def has_text_overlay(self) -> bool:
+        """Check if a text overlay exists."""
+        return self._text_overlay_item is not None
+
+    # --- End Text Overlay System ---
+
+    # --- Border Overlay System for Real-Time Dimension Preview ---
+
+    def add_border_overlay(self, geometry, base_width: float, base_height: float):
+        """
+        Add a border overlay mesh for real-time dimension preview during drag.
+
+        Args:
+            geometry: CadQuery geometry for the border
+            base_width: Original border width when drag started
+            base_height: Original border height when drag started
+        """
+        if not PYQTGRAPH_AVAILABLE or geometry is None:
+            return
+
+        # Tessellate geometry
+        vertices, faces = self._tessellate_geometry(geometry)
+        if vertices is None or faces is None:
+            return
+
+        # Remove existing overlay if present
+        self.remove_border_overlay()
+
+        # Use a highlight color for the overlay
+        overlay_color = (0.5, 1.0, 0.6, 0.85)  # Light green for border
+
+        # Create mesh item
+        mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
+        mesh_item = gl.GLMeshItem(
+            meshdata=mesh_data,
+            smooth=True,
+            shader=self._current_shader,
+            color=overlay_color,
+            drawFaces=True,
+            drawEdges=True,
+            edgeColor=(0.3, 0.6, 0.4, 0.5),
+            glOptions='translucent'
+        )
+        self._view.addItem(mesh_item)
+
+        # Store references
+        self._border_overlay_item = mesh_item
+        self._border_overlay_data = (vertices.copy(), faces.copy(), base_width, base_height)
+
+    def update_border_scale(self, new_width: float, new_height: float):
+        """
+        Update the border overlay scale without rebuilding mesh.
+        This provides instant visual feedback during slider drag.
+
+        Args:
+            new_width: Current border width from slider
+            new_height: Current border height from slider
+        """
+        if self._border_overlay_item is None or self._border_overlay_data is None:
+            return
+
+        mesh_item = self._border_overlay_item
+
+        # Guard against use-after-delete
+        if sip.isdeleted(mesh_item):
+            self._border_overlay_item = None
+            self._border_overlay_data = None
+            return
+
+        # Get base dimensions
+        _, _, base_width, base_height = self._border_overlay_data
+
+        # Calculate scale factors
+        width_scale = new_width / base_width if base_width > 0 else 1.0
+        height_scale = new_height / base_height if base_height > 0 else 1.0
+
+        # Create transform matrix with scale
+        from PyQt5.QtGui import QMatrix4x4
+        transform = QMatrix4x4()
+        # Border width affects thickness - use uniform XY scale as approximation
+        # Height affects Z dimension
+        transform.scale(width_scale, width_scale, height_scale)
+
+        # Apply transform - this is instant, no geometry rebuild
+        mesh_item.setTransform(transform)
+
+    def remove_border_overlay(self):
+        """Remove the border overlay."""
+        if self._border_overlay_item is not None:
+            if PYQTGRAPH_AVAILABLE and not sip.isdeleted(self._border_overlay_item):
+                self._view.removeItem(self._border_overlay_item)
+            self._border_overlay_item = None
+            self._border_overlay_data = None
+
+    def has_border_overlay(self) -> bool:
+        """Check if a border overlay exists."""
+        return self._border_overlay_item is not None
+
+    # --- End Border Overlay System ---
+
+    # --- SVG Size Overlay Extension ---
+
+    def update_svg_overlay_scale(self, svg_id: str, scale: float):
+        """
+        Update the scale of an SVG overlay without rebuilding mesh.
+        This provides instant visual feedback during size slider drag.
+
+        Args:
+            svg_id: The SVG element identifier
+            scale: Scale factor relative to original size
+        """
+        if svg_id not in self._svg_overlay_items:
+            return
+
+        mesh_item = self._svg_overlay_items[svg_id]
+
+        # Guard against use-after-delete
+        if sip.isdeleted(mesh_item):
+            del self._svg_overlay_items[svg_id]
+            return
+
+        # Create transform matrix with uniform scale
+        from PyQt5.QtGui import QMatrix4x4
+        transform = QMatrix4x4()
+        transform.scale(scale, scale, scale)
+
+        # Apply transform - this is instant, no geometry rebuild
+        mesh_item.setTransform(transform)
+
+    # --- End SVG Size Overlay Extension ---
+
     def reset_view(self):
         """Reset to default isometric view centered on model."""
         if PYQTGRAPH_AVAILABLE:
@@ -897,3 +1123,45 @@ class PreviewManager:
     def has_baseplate_overlay(self) -> bool:
         """Check if a baseplate overlay exists."""
         return self.viewer.has_baseplate_overlay()
+
+    # --- Text Overlay Methods ---
+
+    def add_text_overlay(self, geometry, base_size: float, base_depth: float):
+        """Add a text overlay for real-time size/depth preview during drag."""
+        self.viewer.add_text_overlay(geometry, base_size, base_depth)
+
+    def update_text_scale(self, new_size: float, new_depth: float):
+        """Update text overlay scale instantly without geometry rebuild."""
+        self.viewer.update_text_scale(new_size, new_depth)
+
+    def remove_text_overlay(self):
+        """Remove the text overlay."""
+        self.viewer.remove_text_overlay()
+
+    def has_text_overlay(self) -> bool:
+        """Check if a text overlay exists."""
+        return self.viewer.has_text_overlay()
+
+    # --- Border Overlay Methods ---
+
+    def add_border_overlay(self, geometry, base_width: float, base_height: float):
+        """Add a border overlay for real-time dimension preview during drag."""
+        self.viewer.add_border_overlay(geometry, base_width, base_height)
+
+    def update_border_scale(self, new_width: float, new_height: float):
+        """Update border overlay scale instantly without geometry rebuild."""
+        self.viewer.update_border_scale(new_width, new_height)
+
+    def remove_border_overlay(self):
+        """Remove the border overlay."""
+        self.viewer.remove_border_overlay()
+
+    def has_border_overlay(self) -> bool:
+        """Check if a border overlay exists."""
+        return self.viewer.has_border_overlay()
+
+    # --- SVG Scale Extension ---
+
+    def update_svg_scale(self, svg_id: str, scale: float):
+        """Update SVG overlay scale instantly for size preview."""
+        self.viewer.update_svg_overlay_scale(svg_id, scale)
