@@ -72,10 +72,15 @@ class AdvancedPanel(QWidget):
     """Panel for advanced feature settings."""
 
     settings_changed = pyqtSignal()
+    slider_dragging = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._setup_ui()
+
+    def _on_slider_dragging(self, value):
+        """Emit slider_dragging for real-time preview during slider drag."""
+        self.slider_dragging.emit()
 
     def _setup_ui(self):
         # Scroll area for many options
@@ -137,11 +142,13 @@ class AdvancedPanel(QWidget):
         # Size
         self._qr_size = SliderSpinBox("Size:", 10, 50, 20, decimals=0, suffix=" mm")
         self._qr_size.valueChanged.connect(self._on_changed)
+        self._qr_size.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._qr_size)
 
         # Module size
         self._qr_module = SliderSpinBox("Module Size:", 0.3, 2.0, 0.8, decimals=1, suffix=" mm")
         self._qr_module.valueChanged.connect(self._on_changed)
+        self._qr_module.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._qr_module)
 
         # Position
@@ -204,11 +211,13 @@ class AdvancedPanel(QWidget):
         # Width
         self._barcode_width = SliderSpinBox("Width:", 20, 80, 40, decimals=0, suffix=" mm")
         self._barcode_width.valueChanged.connect(self._on_changed)
+        self._barcode_width.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._barcode_width)
 
         # Height
         self._barcode_height = SliderSpinBox("Height:", 5, 20, 10, decimals=0, suffix=" mm")
         self._barcode_height.valueChanged.connect(self._on_changed)
+        self._barcode_height.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._barcode_height)
 
         # Style
@@ -246,11 +255,13 @@ class AdvancedPanel(QWidget):
         # Size
         self._corner_size = SliderSpinBox("Size:", 5, 30, 12, decimals=0, suffix=" mm")
         self._corner_size.valueChanged.connect(self._on_changed)
+        self._corner_size.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._corner_size)
 
         # Depth
         self._corner_depth = SliderSpinBox("Depth:", 0.3, 3.0, 0.8, decimals=1, suffix=" mm")
         self._corner_depth.valueChanged.connect(self._on_changed)
+        self._corner_depth.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._corner_depth)
 
         # Which corners
@@ -297,16 +308,19 @@ class AdvancedPanel(QWidget):
         # Depth
         self._texture_depth = SliderSpinBox("Depth:", 0.1, 1.0, 0.2, decimals=1, suffix=" mm")
         self._texture_depth.valueChanged.connect(self._on_changed)
+        self._texture_depth.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._texture_depth)
 
         # Spacing
         self._texture_spacing = SliderSpinBox("Spacing:", 0.5, 5.0, 1.0, decimals=1, suffix=" mm")
         self._texture_spacing.valueChanged.connect(self._on_changed)
+        self._texture_spacing.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._texture_spacing)
 
         # Angle
         self._texture_angle = SliderSpinBox("Angle:", 0, 90, 0, decimals=0, suffix="°")
         self._texture_angle.valueChanged.connect(self._on_changed)
+        self._texture_angle.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._texture_angle)
 
         # Raised/engraved
@@ -354,11 +368,13 @@ class AdvancedPanel(QWidget):
         # Dot size
         self._braille_dot = SliderSpinBox("Dot Size:", 1.0, 2.0, 1.5, decimals=1, suffix=" mm")
         self._braille_dot.valueChanged.connect(self._on_changed)
+        self._braille_dot.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._braille_dot)
 
         # Dot height
         self._braille_height = SliderSpinBox("Dot Height:", 0.3, 1.0, 0.5, decimals=1, suffix=" mm")
         self._braille_height.valueChanged.connect(self._on_changed)
+        self._braille_height.dragging.connect(self._on_slider_dragging)
         section.add_widget(self._braille_height)
 
         # Position

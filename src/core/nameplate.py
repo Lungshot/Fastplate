@@ -217,20 +217,8 @@ class NameplateBuilder:
         debug_log.debug("Generating text geometry...")
         print(f"[Nameplate] Generating text: arc_enabled={cfg.text.arc_enabled}, style={cfg.text.style}")
 
-        if cfg.text.style == TextStyle.SWEEPING:
-            from .geometry.sweeping_text import RevolvedTextBuilder, RevolvedTextConfig
-            revolved_cfg = RevolvedTextConfig(
-                sweep_radius=cfg.text.sweep_radius,
-                sweep_angle=cfg.text.sweep_angle,
-                sweep_direction=cfg.text.sweep_direction,
-                text_config=cfg.text,
-            )
-            revolved_builder = RevolvedTextBuilder(revolved_cfg)
-            text_geometry, text_bbox = revolved_builder.generate()
-            print(f"[Nameplate] Sweeping text geometry: {text_geometry is not None}, bbox={text_bbox}")
-        else:
-            text_geometry, text_bbox = self._text_gen.generate(cfg.text)
-            print(f"[Nameplate] Text geometry: {text_geometry is not None}, bbox={text_bbox}")
+        text_geometry, text_bbox = self._text_gen.generate(cfg.text)
+        print(f"[Nameplate] Text geometry: {text_geometry is not None}, bbox={text_bbox}")
 
         debug_log.log_geometry("TEXT_GENERATED", {"bbox": str(text_bbox) if text_bbox else "None"})
         return text_geometry, text_bbox
@@ -399,10 +387,6 @@ class NameplateBuilder:
         elif cfg.text.style == TextStyle.CUTOUT:
             result = self._apply_cutout_text(result, cfg, plate_thickness)
             self._text_geometry = None  # Clear - now part of combined geometry
-        elif cfg.text.style == TextStyle.SWEEPING:
-            text_sweeping = text_geometry.rotate((0, 0, 0), (1, 0, 0), -90)
-            text_sweeping = text_sweeping.translate((0, 0, plate_thickness - 0.1))
-            result = union_solids_from_compound(result, text_sweeping)
 
         return result
 

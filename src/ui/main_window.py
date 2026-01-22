@@ -895,85 +895,77 @@ class MainWindow(QMainWindow):
     # --- Text Overlay Handlers ---
 
     def _on_text_drag_started(self):
-        """Handle start of text depth/size slider drag.
-
-        Creates a text overlay for real-time scale preview.
-        """
-        if not self._preview_manager:
-            return
-
-        # Get the current text geometry from the builder
-        text_geom = self._nameplate_builder.get_text_geometry()
-        if text_geom is None:
-            return
-
-        # Get current text params
-        size, depth = self._text_panel.get_current_text_params()
-
-        # Create the overlay with current geometry and base params
-        self._preview_manager.add_text_overlay(text_geom, size, depth)
+        """Handle start of text depth/size slider drag."""
+        pass  # No setup needed for immediate rebuild approach
 
     def _on_text_scale_dragging(self, size: float, depth: float):
-        """Handle real-time text scale update during slider drag.
+        """Handle real-time text preview during slider drag.
 
-        Updates the text overlay scale instantly without geometry rebuild.
+        Triggers immediate rebuild for accurate preview.
         """
-        if not self._preview_manager:
-            return
-
-        # Update overlay scale if it exists
-        if self._preview_manager.has_text_overlay():
-            self._preview_manager.update_text_scale(size, depth)
+        # Trigger immediate update for real-time preview
+        self._update_timer.start(0)
 
     def _on_text_drag_ended(self):
-        """Handle end of text depth/size slider drag.
-
-        Removes the overlay and triggers full geometry rebuild.
-        """
-        if self._preview_manager:
-            self._preview_manager.remove_text_overlay()
-
-        # Trigger full geometry rebuild with final values
+        """Handle end of text depth/size slider drag."""
+        # Final rebuild with settled values
         self._update_timer.start(50)
 
     # --- Border Overlay Handlers ---
 
     def _on_border_drag_started(self):
-        """Handle start of border width/height slider drag.
+        """Handle start of border width/height/offset slider drag.
 
-        Creates a border overlay for real-time scale preview.
+        Marks that we're in border drag mode for real-time preview.
         """
-        if not self._preview_manager:
-            return
-
-        # Get the current border geometry from the builder
-        border_geom = self._nameplate_builder.get_border_geometry()
-        if border_geom is None:
-            return
-
-        # Get current border params
-        width, height = self._base_panel.get_current_border_params()
-
-        # Create the overlay with current geometry and base params
-        self._preview_manager.add_border_overlay(border_geom, width, height)
+        self._border_dragging = True
 
     def _on_border_scale_dragging(self, width: float, height: float):
-        """Handle real-time border scale update during slider drag.
+        """Handle real-time border preview during slider drag.
 
-        Updates the border overlay scale instantly without geometry rebuild.
+        Regenerates border geometry with current values for accurate preview.
         """
-        if not self._preview_manager:
+        if not self._preview_manager or not getattr(self, '_border_dragging', False):
             return
 
-        # Update overlay scale if it exists
-        if self._preview_manager.has_border_overlay():
-            self._preview_manager.update_border_scale(width, height)
+        # Get current config and update border values from sliders
+        base_cfg = self._base_panel.get_config()
+        border_cfg = base_cfg.get('border', {})
+
+        if not border_cfg.get('enabled', False):
+            return
+
+        # Get plate dimensions
+        plate_cfg = base_cfg.get('plate', {})
+        plate_width = plate_cfg.get('width', 120.0)
+        plate_height = plate_cfg.get('height', 35.0)
+        plate_thickness = plate_cfg.get('thickness', 4.0)
+
+        # Generate new border geometry with current slider values
+        from core.geometry.borders import BorderGenerator, BorderConfig, BorderStyle
+        border_config = BorderConfig(
+            enabled=True,
+            style=BorderStyle(border_cfg.get('style', 'raised')),
+            width=border_cfg.get('width', 3.0),
+            height=border_cfg.get('height', 1.5),
+            offset=border_cfg.get('offset', 2.0),
+        )
+
+        border_gen = BorderGenerator()
+        border_geom = border_gen.generate(plate_width, plate_height, plate_thickness, border_config)
+
+        if border_geom is not None:
+            # Remove existing overlay and add new one
+            self._preview_manager.remove_border_overlay()
+            self._preview_manager.add_border_overlay(border_geom, border_config.width, border_config.height)
 
     def _on_border_drag_ended(self):
-        """Handle end of border width/height slider drag.
+        """Handle end of border width/height/offset slider drag.
 
         Removes the overlay and triggers full geometry rebuild.
         """
+        self._border_dragging = False
+
         if self._preview_manager:
             self._preview_manager.remove_border_overlay()
 

@@ -621,7 +621,7 @@ class TextPanel(QWidget):
         style_row = QHBoxLayout()
         style_row.addWidget(QLabel("Style:"))
         self._text_style_combo = ResetableComboBox(default_text="Raised")
-        self._text_style_combo.addItems(["Raised", "Engraved", "Cutout", "Sweeping"])
+        self._text_style_combo.addItems(["Raised", "Engraved", "Cutout"])
         self._text_style_combo.currentTextChanged.connect(self._on_style_changed)
         style_row.addWidget(self._text_style_combo, stretch=1)
         style_layout.addLayout(style_row)
@@ -689,31 +689,6 @@ class TextPanel(QWidget):
 
         self._arc_group.setVisible(False)
         style_layout.addWidget(self._arc_group)
-
-        # Sweeping text options group (shown when style is Sweeping)
-        self._sweep_group = QGroupBox("Sweeping Options")
-        sweep_layout = QVBoxLayout(self._sweep_group)
-
-        self._sweep_radius_slider = SliderSpinBox("Sweep Radius:", 5, 50, 13, decimals=1, suffix=" mm")
-        self._sweep_radius_slider.valueChanged.connect(self._on_changed)
-        self._sweep_radius_slider.dragging.connect(self._on_slider_dragging)
-        sweep_layout.addWidget(self._sweep_radius_slider)
-
-        self._sweep_angle_slider = SliderSpinBox("Sweep Angle:", 20, 180, 65, decimals=0, suffix="°")
-        self._sweep_angle_slider.valueChanged.connect(self._on_changed)
-        self._sweep_angle_slider.dragging.connect(self._on_slider_dragging)
-        sweep_layout.addWidget(self._sweep_angle_slider)
-
-        sweep_dir_row = QHBoxLayout()
-        sweep_dir_row.addWidget(QLabel("Direction:"))
-        self._sweep_direction_combo = ResetableComboBox(default_text="Up")
-        self._sweep_direction_combo.addItems(["Up", "Down"])
-        self._sweep_direction_combo.currentTextChanged.connect(self._on_changed)
-        sweep_dir_row.addWidget(self._sweep_direction_combo, stretch=1)
-        sweep_layout.addLayout(sweep_dir_row)
-
-        self._sweep_group.setVisible(False)
-        style_layout.addWidget(self._sweep_group)
 
         # Text effect
         effect_row = QHBoxLayout()
@@ -856,15 +831,7 @@ class TextPanel(QWidget):
         self._on_changed()
 
     def _on_style_changed(self, style_text: str):
-        """Handle text style change - show/hide sweeping options."""
-        is_sweeping = style_text == "Sweeping"
-        self._sweep_group.setVisible(is_sweeping)
-        # Disable arc text when sweeping is selected (they're mutually exclusive)
-        if is_sweeping:
-            self._arc_enabled_cb.setChecked(False)
-            self._arc_enabled_cb.setEnabled(False)
-        else:
-            self._arc_enabled_cb.setEnabled(True)
+        """Handle text style change."""
         self._on_changed()
 
     def _on_add_icon(self):
@@ -926,12 +893,11 @@ class TextPanel(QWidget):
     
     def get_config(self) -> dict:
         """Get the complete text configuration."""
-        style_map = {"Raised": "raised", "Engraved": "engraved", "Cutout": "cutout", "Sweeping": "sweeping"}
+        style_map = {"Raised": "raised", "Engraved": "engraved", "Cutout": "cutout"}
         align_map = {"Left": "left", "Center": "center", "Right": "right"}
         orient_map = {"Horizontal": "horizontal", "Vertical": "vertical"}
         effect_map = {"None": "none", "Bevel": "bevel", "Rounded": "rounded", "Outline": "outline"}
         arc_dir_map = {"Counterclockwise": "counterclockwise", "Clockwise": "clockwise"}
-        sweep_dir_map = {"Up": "up", "Down": "down"}
 
         return {
             'lines': [w.get_config() for w in self._line_widgets],
@@ -946,10 +912,6 @@ class TextPanel(QWidget):
             'arc_radius': self._arc_radius_slider.value(),
             'arc_angle': self._arc_angle_slider.value(),
             'arc_direction': arc_dir_map.get(self._arc_direction_combo.currentText(), 'counterclockwise'),
-            # Sweeping text options
-            'sweep_radius': self._sweep_radius_slider.value(),
-            'sweep_angle': self._sweep_angle_slider.value(),
-            'sweep_direction': sweep_dir_map.get(self._sweep_direction_combo.currentText(), 'up'),
         }
 
     def set_config(self, config: dict):
@@ -976,13 +938,9 @@ class TextPanel(QWidget):
                     self._line_widgets[-1].set_config(line_config)
 
             # Set style options
-            style_map = {"raised": "Raised", "engraved": "Engraved", "cutout": "Cutout", "sweeping": "Sweeping"}
+            style_map = {"raised": "Raised", "engraved": "Engraved", "cutout": "Cutout"}
             style_text = style_map.get(config.get('style'), 'Raised')
             self._text_style_combo.setCurrentText(style_text)
-            # Show/hide sweep group based on style
-            is_sweeping = style_text == "Sweeping"
-            self._sweep_group.setVisible(is_sweeping)
-            self._arc_enabled_cb.setEnabled(not is_sweeping)
 
             if 'depth' in config:
                 self._depth_slider.setValue(config['depth'])
@@ -1017,15 +975,6 @@ class TextPanel(QWidget):
 
             arc_dir_map = {"counterclockwise": "Counterclockwise", "clockwise": "Clockwise"}
             self._arc_direction_combo.setCurrentText(arc_dir_map.get(config.get('arc_direction'), 'Counterclockwise'))
-
-            # Set sweeping text options
-            if 'sweep_radius' in config:
-                self._sweep_radius_slider.setValue(config['sweep_radius'])
-            if 'sweep_angle' in config:
-                self._sweep_angle_slider.setValue(config['sweep_angle'])
-
-            sweep_dir_map = {"up": "Up", "down": "Down"}
-            self._sweep_direction_combo.setCurrentText(sweep_dir_map.get(config.get('sweep_direction'), 'Up'))
         finally:
             self.blockSignals(False)
 

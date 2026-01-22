@@ -35,3 +35,8 @@ pyinstaller>=6.0.0
 # Testing
 pytest>=7.0.0
 pytest-qt>=4.2.0
+
+# GUI Automation (for test harness)
+pyautogui>=0.9.54
+pywinauto>=0.6.8
+Pillow>=9.0.0

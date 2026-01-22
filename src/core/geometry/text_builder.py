@@ -17,7 +17,6 @@ class TextStyle(Enum):
     RAISED = "raised"       # Text protrudes above base
     ENGRAVED = "engraved"   # Text is cut into base (debossed)
     CUTOUT = "cutout"       # Text cuts through entirely
-    SWEEPING = "sweeping"   # Text wrapped around cylindrical surface (like OpenSCAD rotate_extrude)
 
 
 class TextAlign(Enum):
@@ -213,16 +212,11 @@ class TextConfig:
     effect_size: float = 0.3     # mm - size of bevel/fillet/outline
     outline_thickness: float = 1.0  # mm - thickness for outline mode
 
-    # Arc/Sweeping text settings (used when style=SWEEPING or arc_enabled=True)
+    # Arc text settings (used when arc_enabled=True)
     arc_enabled: bool = False
     arc_radius: float = 50.0     # mm - radius of the text arc
     arc_angle: float = 180.0     # degrees - maximum angle the text can span
     arc_direction: str = "counterclockwise"  # counterclockwise or clockwise
-
-    # Sweeping text specific settings (like OpenSCAD rotate_extrude)
-    sweep_radius: float = 13.0   # mm - distance from center axis (text_excenter in OpenSCAD)
-    sweep_angle: float = 65.0    # degrees - angle to sweep (cutangle in OpenSCAD)
-    sweep_direction: str = "up"  # "up" = text top is highest, "down" = text bottom is highest
 
     def add_line(self, content: str = "", **kwargs) -> 'TextConfig':
         """Add a new text line."""
@@ -255,9 +249,6 @@ class TextConfig:
             'arc_radius': self.arc_radius,
             'arc_angle': self.arc_angle,
             'arc_direction': self.arc_direction,
-            'sweep_radius': self.sweep_radius,
-            'sweep_angle': self.sweep_angle,
-            'sweep_direction': self.sweep_direction,
         }
 
     @classmethod
@@ -305,9 +296,6 @@ class TextConfig:
             arc_radius=data.get('arc_radius', 50.0),
             arc_angle=data.get('arc_angle', 180.0),
             arc_direction=data.get('arc_direction', 'counterclockwise'),
-            sweep_radius=data.get('sweep_radius', 13.0),
-            sweep_angle=data.get('sweep_angle', 65.0),
-            sweep_direction=data.get('sweep_direction', 'up'),
         )
 
 

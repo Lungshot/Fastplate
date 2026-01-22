@@ -301,7 +301,9 @@ class BasePlatePanel(QWidget):
 
         self._border_offset_slider = SliderSpinBox("Offset:", 1, 15, 2, decimals=1, suffix=" mm")
         self._border_offset_slider.valueChanged.connect(self._on_changed)
-        self._border_offset_slider.dragging.connect(self._on_dimension_dragging)
+        self._border_offset_slider.dragging.connect(self._on_border_scale_dragging)
+        self._border_offset_slider.dragStarted.connect(self._on_border_drag_started)
+        self._border_offset_slider.dragEnded.connect(self._on_border_drag_ended)
         border_layout.addWidget(self._border_offset_slider)
 
         # Initially hide border controls

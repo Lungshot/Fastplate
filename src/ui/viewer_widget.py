@@ -55,9 +55,9 @@ class Viewer3DWidget(QWidget):
     }
 
     # Available shaders for lighting effects
+    # Note: 'balloon' shader provides smooth shading that's brighter than 'shaded'
     SHADERS = {
-        'Shaded': 'shaded',
-        'Smooth': 'balloon',
+        'Shaded': 'balloon',
         'Normal Color': 'normalColor',
         'View Normal': 'viewNormalColor',
         'Edge Highlight': 'edgeHilight',
@@ -99,6 +99,11 @@ class Viewer3DWidget(QWidget):
         self._cached_text_faces = None     # Cache for text mesh refresh
         self._model_center = np.array([0.0, 0.0, 0.0])  # Center of current model
         self._model_size = 100.0      # Size of current model for camera distance
+
+        # Edge rendering with angle threshold
+        self._edge_items = []  # List of GLLinePlotItem for feature edges
+        self._text_edge_items = []  # List of GLLinePlotItem for text feature edges
+        self._edge_angle_threshold = 15.0  # Minimum dihedral angle (degrees) to show an edge
 
         # SVG overlay system for real-time preview during drag
         self._svg_overlay_items = {}  # id -> GLMeshItem
@@ -232,6 +237,25 @@ class Viewer3DWidget(QWidget):
             self._current_shader = self.SHADERS[shader_name]
             self._refresh_mesh_display()
 
+    def _get_shader_adjusted_color(self, base_color: Tuple[float, float, float, float]) -> Tuple[float, float, float, float]:
+        """
+        Adjust color brightness based on shader type.
+        The balloon shader provides smooth shading and works well with slightly boosted colors.
+        """
+        r, g, b, a = base_color
+
+        if self._current_shader == 'balloon':
+            # Balloon shader is brighter than 'shaded', just slightly boost the color
+            brightness_boost = 1.3
+            return (
+                min(r * brightness_boost, 1.0),
+                min(g * brightness_boost, 1.0),
+                min(b * brightness_boost, 1.0),
+                a
+            )
+
+        return base_color
+
     def _on_view_changed(self, view_name: str):
         """Handle view preset selection."""
         view_map = {
@@ -246,6 +270,117 @@ class Viewer3DWidget(QWidget):
         }
         preset = view_map.get(view_name, 'iso')
         self.set_view(preset)
+
+    def _compute_feature_edges(self, vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+        """
+        Compute feature edges based on dihedral angle between adjacent faces.
+        Only returns edges where the angle between face normals exceeds the threshold.
+
+        Args:
+            vertices: Nx3 array of vertex positions
+            faces: Mx3 array of face vertex indices
+
+        Returns:
+            Px2x3 array of edge line segments (P edges, 2 endpoints, 3 coords)
+        """
+        if vertices is None or faces is None or len(faces) == 0:
+            return np.array([])
+
+        # Compute face normals
+        v0 = vertices[faces[:, 0]]
+        v1 = vertices[faces[:, 1]]
+        v2 = vertices[faces[:, 2]]
+
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+        normals = np.cross(edge1, edge2)
+
+        # Normalize
+        norms = np.linalg.norm(normals, axis=1, keepdims=True)
+        norms[norms == 0] = 1  # Avoid division by zero
+        normals = normals / norms
+
+        # Build edge-to-face mapping
+        # Each edge is represented as a tuple of sorted vertex indices
+        edge_faces = {}  # edge -> list of face indices
+
+        for face_idx, face in enumerate(faces):
+            for i in range(3):
+                v_a, v_b = face[i], face[(i + 1) % 3]
+                edge_key = (min(v_a, v_b), max(v_a, v_b))
+                if edge_key not in edge_faces:
+                    edge_faces[edge_key] = []
+                edge_faces[edge_key].append(face_idx)
+
+        # Find feature edges (edges with large dihedral angle or boundary edges)
+        threshold_rad = np.radians(self._edge_angle_threshold)
+        feature_edges = []
+
+        for (v_a, v_b), face_indices in edge_faces.items():
+            is_feature = False
+
+            if len(face_indices) == 1:
+                # Boundary edge - always show
+                is_feature = True
+            elif len(face_indices) >= 2:
+                # Check dihedral angle between first two adjacent faces
+                n1 = normals[face_indices[0]]
+                n2 = normals[face_indices[1]]
+
+                # Dot product gives cos(angle)
+                dot = np.clip(np.dot(n1, n2), -1.0, 1.0)
+                angle = np.arccos(dot)
+
+                if angle > threshold_rad:
+                    is_feature = True
+
+            if is_feature:
+                feature_edges.append([vertices[v_a], vertices[v_b]])
+
+        if not feature_edges:
+            return np.array([])
+
+        return np.array(feature_edges)
+
+    def _clear_edge_items(self):
+        """Remove all edge line items from the view."""
+        for item in self._edge_items:
+            if not sip.isdeleted(item):
+                self._view.removeItem(item)
+        self._edge_items = []
+
+        for item in self._text_edge_items:
+            if not sip.isdeleted(item):
+                self._view.removeItem(item)
+        self._text_edge_items = []
+
+    def _add_feature_edges(self, vertices: np.ndarray, faces: np.ndarray,
+                           color: Tuple[float, float, float, float],
+                           is_text: bool = False):
+        """Add feature edge lines to the view."""
+        edges = self._compute_feature_edges(vertices, faces)
+
+        if len(edges) == 0:
+            return
+
+        # Create line items for edges (batch them for efficiency)
+        # GLLinePlotItem can handle multiple disconnected line segments
+        # by using mode='lines' with pairs of points
+        edge_points = edges.reshape(-1, 3)  # Flatten to Nx3
+
+        edge_item = gl.GLLinePlotItem(
+            pos=edge_points,
+            color=color,
+            width=1.5,
+            mode='lines',
+            antialias=True
+        )
+        self._view.addItem(edge_item)
+
+        if is_text:
+            self._text_edge_items.append(edge_item)
+        else:
+            self._edge_items.append(edge_item)
 
     def _get_text_color(self) -> Tuple[float, float, float, float]:
         """Calculate a contrasting color for text based on base color."""
@@ -264,40 +399,67 @@ class Viewer3DWidget(QWidget):
 
     def _refresh_mesh_display(self):
         """Refresh mesh display settings without changing camera position."""
+        # Clear existing edge items first
+        self._clear_edge_items()
+
         # Refresh base mesh
         if self._mesh_item is not None and self._cached_vertices is not None:
             self._view.removeItem(self._mesh_item)
 
+            # Apply shader-adjusted color for visibility
+            adjusted_color = self._get_shader_adjusted_color(self._current_color)
+
             mesh_data = gl.MeshData(vertexes=self._cached_vertices, faces=self._cached_faces)
+
+            # In wireframe mode, use built-in drawEdges for all edges
+            # Otherwise, disable built-in edges and use feature edge rendering
+            use_builtin_edges = self._wireframe_mode
+
             self._mesh_item = gl.GLMeshItem(
                 meshdata=mesh_data,
                 smooth=True,
                 shader=self._current_shader,
-                color=self._current_color,
+                color=adjusted_color,
                 drawFaces=not self._wireframe_mode,
-                drawEdges=self._show_edges or self._wireframe_mode,
-                edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else self._current_color,
+                drawEdges=use_builtin_edges,
+                edgeColor=adjusted_color if self._wireframe_mode else (0.2, 0.2, 0.25, 0.8),
                 glOptions='opaque'
             )
             self._view.addItem(self._mesh_item)
+
+            # Add feature edges if enabled (and not in wireframe mode)
+            if self._show_edges and not self._wireframe_mode:
+                edge_color = (0.15, 0.15, 0.2, 0.9)  # Dark edge color
+                self._add_feature_edges(self._cached_vertices, self._cached_faces, edge_color, is_text=False)
 
         # Refresh text mesh with contrasting color
         if self._text_mesh_item is not None and self._cached_text_vertices is not None:
             self._view.removeItem(self._text_mesh_item)
 
             text_color = self._get_text_color()
+            # Apply shader-adjusted color for visibility
+            adjusted_text_color = self._get_shader_adjusted_color(text_color)
+
             mesh_data = gl.MeshData(vertexes=self._cached_text_vertices, faces=self._cached_text_faces)
+
+            use_builtin_edges = self._wireframe_mode
+
             self._text_mesh_item = gl.GLMeshItem(
                 meshdata=mesh_data,
                 smooth=True,
                 shader=self._current_shader,
-                color=text_color,
+                color=adjusted_text_color,
                 drawFaces=not self._wireframe_mode,
-                drawEdges=self._show_edges or self._wireframe_mode,
-                edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else text_color,
+                drawEdges=use_builtin_edges,
+                edgeColor=adjusted_text_color if self._wireframe_mode else (0.2, 0.2, 0.25, 0.8),
                 glOptions='opaque'
             )
             self._view.addItem(self._text_mesh_item)
+
+            # Add feature edges for text if enabled (and not in wireframe mode)
+            if self._show_edges and not self._wireframe_mode:
+                edge_color = (0.15, 0.15, 0.2, 0.9)  # Dark edge color
+                self._add_feature_edges(self._cached_text_vertices, self._cached_text_faces, edge_color, is_text=True)
 
     def _add_axis_indicator(self):
         """Add XYZ axis indicator."""
@@ -389,16 +551,19 @@ class Viewer3DWidget(QWidget):
             self._text_geometry = None
 
             # Create mesh item with current display settings
+            # Apply shader-adjusted color for visibility
+            adjusted_color = self._get_shader_adjusted_color(self._current_color)
+
             mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
 
             self._mesh_item = gl.GLMeshItem(
                 meshdata=mesh_data,
                 smooth=True,
                 shader=self._current_shader,
-                color=self._current_color,
+                color=adjusted_color,
                 drawFaces=not self._wireframe_mode,
                 drawEdges=self._show_edges or self._wireframe_mode,
-                edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else self._current_color,
+                edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else adjusted_color,
                 glOptions='opaque'
             )
 
@@ -510,15 +675,18 @@ class Viewer3DWidget(QWidget):
                     self._cached_faces = faces
                     all_vertices.append(vertices)
 
+                    # Apply shader-adjusted color for visibility
+                    adjusted_color = self._get_shader_adjusted_color(self._current_color)
+
                     mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
                     self._mesh_item = gl.GLMeshItem(
                         meshdata=mesh_data,
                         smooth=True,
                         shader=self._current_shader,
-                        color=self._current_color,
+                        color=adjusted_color,
                         drawFaces=not self._wireframe_mode,
                         drawEdges=self._show_edges or self._wireframe_mode,
-                        edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else self._current_color,
+                        edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else adjusted_color,
                         glOptions='opaque'
                     )
                     self._view.addItem(self._mesh_item)
@@ -533,15 +701,18 @@ class Viewer3DWidget(QWidget):
                     all_vertices.append(vertices)
 
                     text_color = self._get_text_color()
+                    # Apply shader-adjusted color for visibility
+                    adjusted_text_color = self._get_shader_adjusted_color(text_color)
+
                     mesh_data = gl.MeshData(vertexes=vertices, faces=faces)
                     self._text_mesh_item = gl.GLMeshItem(
                         meshdata=mesh_data,
                         smooth=True,
                         shader=self._current_shader,
-                        color=text_color,
+                        color=adjusted_text_color,
                         drawFaces=not self._wireframe_mode,
                         drawEdges=self._show_edges or self._wireframe_mode,
-                        edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else text_color,
+                        edgeColor=(0.2, 0.2, 0.25, 0.8) if not self._wireframe_mode else adjusted_text_color,
                         glOptions='opaque'
                     )
                     self._view.addItem(self._text_mesh_item)
@@ -582,6 +753,8 @@ class Viewer3DWidget(QWidget):
             if self._text_mesh_item is not None:
                 self._view.removeItem(self._text_mesh_item)
                 self._text_mesh_item = None
+            # Clear feature edge items
+            self._clear_edge_items()
             # Clear SVG overlays
             self.clear_svg_overlays()
         self._geometry = None

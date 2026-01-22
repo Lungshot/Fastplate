@@ -731,11 +731,18 @@ class SVGImporter:
             path_info.sort(key=lambda p: p['area'], reverse=True)
 
             # Determine nesting levels based on containment
+            # Find the SMALLEST (most immediate) containing path for proper nesting
             for i, inner in enumerate(path_info):
+                smallest_container = None
+                smallest_area = float('inf')
                 for outer in path_info[:i]:  # Only check larger paths
                     if self._bounds_contains(outer['bounds'], inner['bounds']):
-                        inner['nesting_level'] = outer['nesting_level'] + 1
-                        break  # Found the immediate parent
+                        # Track the smallest container (most immediate parent)
+                        if outer['area'] < smallest_area:
+                            smallest_area = outer['area']
+                            smallest_container = outer
+                if smallest_container is not None:
+                    inner['nesting_level'] = smallest_container['nesting_level'] + 1
 
             # Build geometry using even-odd rule:
             # - Level 0: extrude (filled)

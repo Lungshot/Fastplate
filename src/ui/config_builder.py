@@ -125,16 +125,11 @@ class ConfigBuilder:
         config.text.effect = TextEffect(text_cfg.get('effect', 'none'))
         config.text.effect_size = text_cfg.get('effect_size', 0.3)
 
-        # Arc/Sweeping text settings
+        # Arc text settings
         config.text.arc_enabled = text_cfg.get('arc_enabled', False)
         config.text.arc_radius = text_cfg.get('arc_radius', 50.0)
         config.text.arc_angle = text_cfg.get('arc_angle', 180.0)
         config.text.arc_direction = text_cfg.get('arc_direction', 'counterclockwise')
-
-        # Sweeping text settings
-        config.text.sweep_radius = text_cfg.get('sweep_radius', 13.0)
-        config.text.sweep_angle = text_cfg.get('sweep_angle', 65.0)
-        config.text.sweep_direction = text_cfg.get('sweep_direction', 'up')
 
     def _build_plate_config(self, config: NameplateConfig, base_cfg: dict) -> None:
         """Build plate configuration from panel config dict."""
@@ -245,6 +240,17 @@ class ConfigBuilder:
         # Hanging hole options
         config.mount.hanging_hole_diameter = mount_cfg.get('hanging_diameter', 5.0)
         config.mount.hanging_hole_position = mount_cfg.get('hanging_position', 'top_center')
+
+        # Lanyard slot options
+        config.mount.lanyard_slot_width = mount_cfg.get('lanyard_width', 15.0)
+        config.mount.lanyard_slot_height = mount_cfg.get('lanyard_height', 4.0)
+        config.mount.lanyard_slot_position = mount_cfg.get('lanyard_position', 'top_center')
+
+        # Clip mount options
+        config.mount.clip_width = mount_cfg.get('clip_width', 20.0)
+        config.mount.clip_thickness = mount_cfg.get('clip_thickness', 2.0)
+        config.mount.clip_gap = mount_cfg.get('clip_gap', 3.0)
+        config.mount.clip_position = mount_cfg.get('clip_position', 'back_top')
 
     def _build_svg_config(self, config: NameplateConfig, svg_panel: 'SVGPanel') -> None:
         """Build SVG and QR configuration from panel."""

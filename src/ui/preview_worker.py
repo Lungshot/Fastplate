@@ -46,15 +46,11 @@ class GeometryCache:
                     'offset_y': getattr(text, 'offset_y', 0),
                     'effect': str(getattr(text, 'effect', '')),
                     'effect_size': getattr(text, 'effect_size', 0),
-                    # Arc/Sweeping text settings
+                    # Arc text settings
                     'arc_enabled': getattr(text, 'arc_enabled', False),
                     'arc_radius': getattr(text, 'arc_radius', 50.0),
                     'arc_angle': getattr(text, 'arc_angle', 180.0),
                     'arc_direction': getattr(text, 'arc_direction', 'counterclockwise'),
-                    # Sweeping text settings
-                    'sweep_radius': getattr(text, 'sweep_radius', 13.0),
-                    'sweep_angle': getattr(text, 'sweep_angle', 65.0),
-                    'sweep_direction': getattr(text, 'sweep_direction', 'up'),
                 }
 
                 # Add line content
